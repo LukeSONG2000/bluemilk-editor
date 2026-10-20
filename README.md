@@ -1,9 +1,27 @@
 # BlueMilk Editor
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
-项目正在迁入本仓库；目前公开的是包工具、生命周期 registry 和最小示例，
-**不是完整客户端源码或完整公共 SDK**。完整源码迁移、EXE/MSIX Release 和应用内安装更新仍在进行。
+项目正在迁入本仓库；目前包括 WinUI 前端源码及测试、EXE/MSIX 构建脚本、
+包工具、生命周期 registry 和最小示例。**原生运行时/CLI 后端尚未全部迁入，
+还不能仅从本仓库构建完整可连接游戏的发行包，也不是完整公共 SDK。**
+完整源码迁移、EXE/MSIX Release 和应用内安装更新仍在进行。
 本项目独立维护，不隶属于 EA；不包含原游戏资源、账户数据或游戏二进制。
+
+## 编译 WinUI 前端
+
+在 Windows 安装 .NET 8 SDK 后：
+
+```powershell
+dotnet build src/client/Swgoh.Client.csproj -c Release
+dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
+```
+
+这些命令不依赖原复刻仓库；前端可独立编译，测试不连接游戏。
+实际连接需要后续迁入的共享运行时。`build.ps1` 和两个安装打包脚本目前还要求
+`src/dist/SWGoH-Runtime.exe`、`src/dist/bluemilk.exe`、`src/assets/names.json`、
+`src/CLI说明.txt`，这些发行输入尚未随本仓库提供；不会用虚拟运行时填补。
+EXE 打包需要 Inno Setup，MSIX 打包需要对应 Windows SDK，签名证书由构建者自行配置。
+仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
 
 ## 运行示例
 

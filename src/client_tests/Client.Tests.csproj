@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../client/ReleaseUpdates.cs" Link="ReleaseUpdates.cs" />
+    <Compile Include="../client/PackageDownloads.cs" Link="PackageDownloads.cs" />
+    <Compile Include="../client/MsixIdentity.cs" Link="MsixIdentity.cs" />
+    <Compile Include="../client/CliInstaller.cs" Link="CliInstaller.cs" />
+    <Compile Include="../client/RuntimeConnection.cs" Link="RuntimeConnection.cs" />
+    <Compile Include="../client/SharedConnection.cs" Link="SharedConnection.cs" />
+    <Compile Include="../client/ServerEndpoint.cs" Link="ServerEndpoint.cs" />
+    <Compile Include="../client/SharedPaths.cs" Link="SharedPaths.cs" />
+    <Compile Include="../client/ServerLauncher.cs" Link="ServerLauncher.cs" />
+    <Compile Include="../client/BattlePresentation.cs" Link="BattlePresentation.cs" />
+    <Compile Include="../client/EnemyControlModel.cs" Link="EnemyControlModel.cs" />
+    <Compile Include="../client/CapturePresentation.cs" Link="CapturePresentation.cs" />
+  </ItemGroup>
+</Project>
