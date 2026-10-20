@@ -63,8 +63,8 @@ class TrialControlTests(unittest.TestCase):
         self.assertIn('globalThis.trialControlPackage=',source)
         self.assertIn('await prepareTrialControl(f)',source)
         self.assertFalse(m['enemyControl'])
-        self.assertIn('if(guard&&modsClean)',source)
-        self.assertIn('if(cleanup.home&&modsClean)',source)
+        self.assertTrue('if(cleanup.home&&modsClean&&cleanup.errors.length===0)' in source)
+        self.assertTrue("traceCleanup('offline-guard-retained'" in source)
 
     def test_managed_assembler_pins_configuration_and_store_reference(self):
         from trial_store import snapshot

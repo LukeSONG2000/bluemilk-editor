@@ -263,13 +263,15 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
    try{if(globalThis.trialAITrace){trialAITrace.stop();send(trialAITrace.snapshot());}}
    catch(exception){cleanup.errors.push('AI trace cleanup: '+String(exception));}
    for(const listener of hooks)try{listener.detach();}catch(exception){cleanup.errors.push('detach: '+String(exception));}
-   try{if(guard&&modsClean){guard.restore();cleanup.guardRestored=true;}}catch(exception){cleanup.errors.push('guard restore: '+String(exception));}
-   // No release while a live original state may still depend on fixture objects.
-   if(cleanup.home&&modsClean)try{
+   // Keep offline isolation and fixture ownership when any earlier cleanup
+   // failed. Home confirmation alone does not prove Mod hooks were removed.
+   if(cleanup.home&&modsClean&&cleanup.errors.length===0)try{
     await R.runOnMainThreadOnce(()=>{if(f?.restoreDefinitions){f.restoreDefinitions();cleanup.definitionsRestored=true;}});
     if(globalThis.readLoadingProfile)await R.runOnMainThreadOnce(()=>send({kind:'trial-loading-profile',phase:'after-home',profile:readLoadingProfile()}));
+    if(guard){guard.restore();cleanup.guardRestored=true;}
     R.releaseAll();cleanup.gcReleased=true;
-   }catch(exception){cleanup.errors.push('definitions/GC release: '+String(exception));}
+   }catch(exception){cleanup.errors.push('definitions/guard/GC release: '+String(exception));}
+   if(guard&&!cleanup.guardRestored)traceCleanup('offline-guard-retained',{home:cleanup.home,modsClean,errors:cleanup.errors.slice()});
    verifyCapture();
    traceCleanup('finished',{home:cleanup.home,guardRestored:cleanup.guardRestored,gcReleased:cleanup.gcReleased,errors:cleanup.errors.slice()});
    const verifiedVisualBattle=!error&&readyAt!==0&&clicked&&terminalObserved&&serviceCalls===0&&cleanup.home&&cleanup.guardRestored&&cleanup.errors.length===0;
