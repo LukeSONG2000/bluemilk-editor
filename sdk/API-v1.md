@@ -334,10 +334,21 @@ protocol command is:
 {"id":"read-1","operation":"mods-command","payload":{"id":"org.example.battle-reader","command":"snapshot","payload":{"detailScope":"selected"}}}
 ```
 
-Node acceptance: `node tests/battle_reader.mjs`. Native acceptance remains
-pending: an early trial teardown during the first SDK query test failed to
-confirm restoration. That run is not a successful SDK or cleanup verification;
-no cross-mode or performance claim is made. Ordinary prepared-session protocol
+Node acceptance: `node tests/battle_reader.mjs`. Original-runtime acceptance
+now covers a six-unit local PVE trial after the original FSM exposes ability
+input readiness: selected/all queries, matching original unit IDs, disable
+rejection, re-enable, and confirmed Home/guard/GC/registry cleanup. Frozen CLI
+and app-server acceptance also covers package install/register/enable/query/
+disable/disconnect at Home with PATH restricted to the Windows system directory.
+Non-battle queries omit unrelated menu data. No cross-mode or performance claim
+is made.
+
+An earlier test stopped during partial unit loading and failed to restore the
+client. The game was recovered by normal window close and relaunch, without a
+forced termination. The later successful test is not proof that early-loading
+cancellation is fixed; that path remains unresolved. Readiness is checked from
+original `input.awaitingAbility`, not by waiting a fixed duration or treating
+any nonempty unit list as a loaded battle. Ordinary prepared-session protocol
 still restricts third-party command registration; the example currently targets
 the normal shared session.
 
