@@ -45,5 +45,9 @@ expose a public data-query method. Existing private protocol snapshots remain
 available separately. This first interface is not the complete planned SDK.
 
 Actual game-process acceptance so far covers two package enable/disable cycles
-at the Home screen. Battle-mode UI, WinUI package management, restart selection,
-upgrade/uninstall and cross-mode/performance acceptance remain outstanding.
+at the Home screen. The WinUI Mod page now exposes inspection, installation, loading
+and enable/disable through the shared protocol; independent CLI readback confirms
+the same enabled/disabled state. Visual acceptance is still pending because both
+the prior client and this build produced blank client areas on the current desktop.
+Battle-mode UI, restart selection, upgrade/uninstall and cross-mode/performance
+acceptance remain outstanding.
