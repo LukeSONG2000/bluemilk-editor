@@ -11,6 +11,22 @@ from mod_package import inspect_package
 
 
 class AuthorTests(unittest.TestCase):
+    def test_configuration_example_and_runtime_validator_match(self):
+        from mod_config_schema import resolve
+        self.assertEqual((ROOT / 'tools/mod_config_schema.py').read_bytes(),
+                         (ROOT / 'src/runtime/mod_config_schema.py').read_bytes())
+        self.assertEqual((ROOT / 'tools/mod_package.py').read_bytes(),
+                         (ROOT / 'src/runtime/mod_package.py').read_bytes())
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'configuration.bluemilk'
+            pack(ROOT / 'examples/configuration', output)
+            schema = inspect_package(output)['manifest']['configuration']
+            values = resolve(schema, {})
+            self.assertEqual(values['rows'], 5)
+            self.assertEqual(values['showDetails'], True)
+            with self.assertRaises(ValueError):
+                resolve(schema, {'rows': 1000})
+
     def test_reproducible_validated_package(self):
         with tempfile.TemporaryDirectory() as directory:
             a, b = (Path(directory) / name for name in ('a.bluemilk', 'b.bluemilk'))

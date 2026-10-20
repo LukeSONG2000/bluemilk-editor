@@ -84,3 +84,40 @@ class ConfigTests(unittest.TestCase):
             finally:
                 child.communicate('\n', timeout=10)
             self.assertEqual(child.returncode, 0)
+
+    def test_schema_defaults_validation_and_revision(self):
+        self.manifest['configuration'] = {'version': 1, 'fields': [
+            {'key': 'count', 'label': 'Count', 'type': 'integer', 'default': 3, 'minimum': 1, 'maximum': 9},
+            {'key': 'on', 'label': 'Enabled', 'type': 'boolean', 'default': True},
+            {'key': 'mode', 'label': 'Mode', 'type': 'string', 'default': 'a', 'maxLength': 2, 'options': ['a', 'b']}]}
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            self.prepare()
+            initial = read(self.sha)
+            self.assertEqual(initial['values'], {'count': 3, 'on': True, 'mode': 'a'})
+            for values in ({'count': True}, {'count': 1.5}, {'count': 10}, {'on': 1}, {'mode': 'c'}, {'other': True}):
+                with self.assertRaises(ValueError):
+                    write(self.sha, initial['revision'], values)
+                self.assertEqual(read(self.sha), initial)
+            saved = write(self.sha, initial['revision'], {'count': 5})
+            self.assertEqual(saved['values'], {'count': 5, 'on': True, 'mode': 'a'})
+
+    def test_invalid_manifest_schema_rejected_before_install(self):
+        from mod_config_schema import validate_schema
+        import copy
+        base = {'version': 1, 'fields': [{'key': 'name', 'label': 'Name', 'type': 'string', 'default': '', 'maxLength': 4}]}
+        for update in ({'type': 'unknown'}, {'default': 2}, {'options': ['a', 'a']}, {'maxLength': 0}, {'unknown': 1}):
+            schema = copy.deepcopy(base)
+            schema['fields'][0].update(update)
+            self.manifest['configuration'] = schema
+            test_mod_package.PackageTests.write(self)
+            with self.assertRaises(ValueError):
+                inspect_package(self.path)
+        duplicate = copy.deepcopy(base)
+        duplicate['fields'] *= 2
+        with self.assertRaises(ValueError):
+            validate_schema(duplicate)
+        oversized = {'version': 1, 'fields': [
+            {'key': 'field' + str(i), 'label': 'Label', 'type': 'string', 'maxLength': 1024, 'default': 'x' * 1024}
+            for i in range(9)]}
+        with self.assertRaisesRegex(ValueError, '8 KiB'):
+            validate_schema(oversized)

@@ -93,5 +93,25 @@ The marker records the Mod ID and removed hash; it is not an enable-on-start pro
 注册快照，不能修改。写入响应 `activation: "next-registration"` 不表示已启用。
 配置按包摘要隔离，升级不自动沿用旧配置；卸载保留配置，重装相同包可恢复。
 当前上限为 8 KiB、16 层嵌套，数值限 JavaScript 可安全表达的范围。
-损坏文件不会自动重置。作者需在工厂中校验字段含义，尚无通用配置表单或 schema。
+损坏文件不会自动重置。作者仍需在工厂中校验字段的业务含义。
 配置不是凭据保险库，请勿保存访问令牌。
+
+### 原生配置表单 v1
+
+清单可添加 `configuration: {"version":1,"fields":[...]}`。它是有界表单格式，
+并非完整 JSON Schema。未声明时保留原 JSON 配置接口，客户端不提供自由 JSON 编辑器。
+
+每个字段必须有 `key`、`label`、`type` 和 `default`。支持：
+
+| type | 附加字段 | WinUI 控件 |
+| --- | --- | --- |
+| `boolean` | 无 | ToggleSwitch |
+| `integer` | 必填 `minimum`、`maximum`，安全整数范围 | NumberBox |
+| `string` | 必填 `maxLength`（1–1024）；可选 `options` 字符串列表 | TextBox 或 ComboBox |
+
+字段数 1–32，key 为不重复的 ASCII 标识符，label 最长 128 字符。
+选项最多 32 个，默认值必须符合规则，默认值总大小不超过 8 KiB。
+打包检查和运行时均拒绝未知 schema 属性、无效默认值以及未知配置项。
+读取时补齐未保存字段的默认值；保存时校验全部有效值，客户端和 CLI 规则相同。
+输入界面保留修订冲突与占用锁检查，失败不关闭表单，也不重发请求。
+见 `examples/configuration/mod.json`。跨版本配置迁移仍未实现。

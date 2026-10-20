@@ -117,6 +117,10 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        if (Environment.GetCommandLineArgs().Contains("--smoke-config")) {
+            navigation.SelectedItem = modsItem;
+            _ = SmokeConfigAsync(mods);
+        }
         if (Environment.GetCommandLineArgs().Contains("--smoke-mods"))
         {
             navigation.SelectedItem = modsItem;
@@ -170,6 +174,23 @@ public sealed partial class ShellApplication : Application
             navigation.SelectedItem = settings;
             _ = SmokeCliAsync(cliSettings, testRoot);
         }
+    }
+
+    private async Task SmokeConfigAsync(ModManagementView mods)
+    {
+        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
+        try {
+            await mods.InspectAsync(Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
+                ?? throw new InvalidOperationException("Explicit configuration example required."));
+            await mods.InstallAsync();
+            mods.SelectMod("org.example.configuration");
+            await mods.ConfigureAsync();
+            if (output != null) await File.WriteAllTextAsync(output + ".config-reopened", "{}");
+            await mods.ConfigureAsync();
+            if (output != null) await File.WriteAllTextAsync(output, "{\"configurationDialog\":true}");
+        } catch (Exception e) {
+            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
+        } finally { window?.Close(); }
     }
 
     private async Task SmokeModsAsync(ConnectionView connection, ModManagementView mods)

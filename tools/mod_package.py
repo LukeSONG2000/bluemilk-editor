@@ -58,6 +58,9 @@ def validate_manifest(value):
     if (not isinstance(versions, dict) or any(k not in value['dependencies'] or not valid_version(v)
                                              for k, v in versions.items())):
         raise ValueError('Invalid dependencyVersions')
+    if 'configuration' in value:
+        from mod_config_schema import validate_schema
+        validate_schema(value['configuration'])
     return value
 
 

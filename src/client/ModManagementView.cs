@@ -13,6 +13,7 @@ internal sealed class ModManagementView : StackPanel
     private readonly Button enable = new() { Content = "启用", IsEnabled = false };
     private readonly Button disable = new() { Content = "停用并恢复", IsEnabled = false };
     private readonly Button uninstall = new() { Content = "卸载", IsEnabled = false };
+    private readonly Button configure = new() { Content = "配置", IsEnabled = false };
     private readonly TextBlock package = new() { Text = "选择 .bluemilk 文件以检查内容。", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 280 };
@@ -38,6 +39,7 @@ internal sealed class ModManagementView : StackPanel
         Children.Add(refresh); Children.Add(list); Children.Add(detail);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(load); actions.Children.Add(enable); actions.Children.Add(disable); actions.Children.Add(uninstall); Children.Add(actions);
+        actions.Children.Add(configure);
         Children.Add(new TextBlock { Text = "仅启用可信来源的 Mod。它们在游戏进程中执行；发布者名称和文件摘要不证明作者身份。", TextWrapping = TextWrapping.Wrap });
         choose.Click += async (_, _) => {
             try {
@@ -54,6 +56,7 @@ internal sealed class ModManagementView : StackPanel
         enable.Click += async (_, _) => { try { await ChangeAsync("mods-enable"); } catch { } };
         disable.Click += async (_, _) => { try { await ChangeAsync("mods-disable"); } catch { } };
         uninstall.Click += async (_, _) => { try { await ChangeAsync("mods-package-uninstall"); } catch { } };
+        configure.Click += async (_, _) => { try { await ConfigureAsync(); } catch { } };
         list.SelectionChanged += (_, _) => Update();
     }
 
@@ -77,6 +80,7 @@ internal sealed class ModManagementView : StackPanel
         enable.IsEnabled = !busy && gameConnected && state == "disabled";
         disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
         uninstall.IsEnabled = !busy && row != null;
+        configure.IsEnabled = !busy && row != null;
         detail.Text = row == null ? "选择一个 Mod 查看状态。" :
             $"{row.Name}  {row.Version}\n{row.Usage} · {StateName(state)}" +
             (native?.TryGetProperty("error", out var error) == true && error.ValueKind == JsonValueKind.String
@@ -180,4 +184,36 @@ internal sealed class ModManagementView : StackPanel
     {
         list.SelectedItem = list.Items.Cast<ListViewItem>().Single(x => ((Row)x.Tag).Id == id);
     }
+    internal Task ConfigureAsync() => RunAsync(async service => {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        var record = await service.RequestAsync("mods-config-read", new { sha256 = row.Hash });
+        if (!record.TryGetProperty("schema", out var schema) || schema.ValueKind == JsonValueKind.Null)
+            throw new InvalidOperationException("此 Mod 尚未提供配置表单。");
+        var form = new ModConfigurationForm(schema, record.GetProperty("values"));
+        var message = new InfoBar { IsOpen = false, IsClosable = false, Severity = InfoBarSeverity.Error };
+        var body = new StackPanel { Spacing = 12 };
+        body.Children.Add(message); body.Children.Add(form);
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = row.Name + " · 配置",
+            PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Primary,
+            Content = new ScrollViewer { Content = body, MaxHeight = 420, MinWidth = 320 } };
+        dialog.PrimaryButtonClick += async (_, args) => {
+            var deferral = args.GetDeferral();
+            dialog.IsPrimaryButtonEnabled = false;
+            try {
+                await service.RequestAsync("mods-config-write", new { sha256 = row.Hash,
+                    revision = record.GetProperty("revision").GetString(), values = form.Values() });
+                status.Title = "配置已保存"; status.Message = "下次载入此 Mod 时生效。";
+                status.Severity = InfoBarSeverity.Success;
+            } catch (Exception e) {
+                args.Cancel = true;
+                message.Title = "未保存"; message.Message = e.Message.Contains("in use")
+                    ? "此 Mod 仍被运行时占用，请先在概览断开连接，再保存配置。"
+                    : e.Message.Contains("Configuration changed")
+                    ? "配置已被另一入口修改。请取消并重新打开，核对最新内容后保存。" : e.Message.Split('\n')[0];
+                message.IsOpen = true;
+            } finally { dialog.IsPrimaryButtonEnabled = true; deferral.Complete(); }
+        };
+        await dialog.ShowAsync();
+        return true;
+    });
 }

@@ -8,6 +8,7 @@ import uuid
 
 from mod_store import directory, locked, _registration, _lease
 from mod_package import unique_object
+from mod_config_schema import resolve
 
 
 def encode(values):
@@ -39,7 +40,7 @@ def encode(values):
     return raw
 
 
-def _read(root, sha):
+def _read(root, sha, schema):
     path = root / 'config' / (sha + '.json')
     if path.exists():
         with path.open('rb') as stream:
@@ -50,22 +51,25 @@ def _read(root, sha):
     else:
         values = {}
     raw = encode(values)
-    return {'sha256': sha, 'revision': hashlib.sha256(raw).hexdigest(), 'values': values}
+    return {'sha256': sha, 'revision': hashlib.sha256(raw).hexdigest(),
+            'values': resolve(schema, values), 'schema': schema}
 
 
 def read(sha, root=None):
     root = Path(root) if root else directory()
     with locked(root):
-        _registration(sha, root)
-        return _read(root, sha)
+        manifest, _, _ = _registration(sha, root)
+        return _read(root, sha, manifest.get('configuration'))
 
 
 def write(sha, revision, values, root=None):
     raw = encode(values)
     root = Path(root) if root else directory()
     with locked(root):
-        _registration(sha, root)
-        current = _read(root, sha)
+        manifest, _, _ = _registration(sha, root)
+        schema = manifest.get('configuration')
+        raw = encode(resolve(schema, values))
+        current = _read(root, sha, schema)
         if revision != current['revision']:
             raise ValueError('Configuration changed; read the latest revision before saving')
         # A disabled but registered package still owns its factory snapshot.
@@ -82,6 +86,6 @@ def write(sha, revision, values, root=None):
                 os.replace(temporary, folder / (sha + '.json'))
             finally:
                 temporary.unlink(missing_ok=True)
-            return {**_read(root, sha), 'activation': 'next-registration'}
+            return {**_read(root, sha, schema), 'activation': 'next-registration'}
         finally:
             release()
