@@ -2,8 +2,8 @@
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
 项目正在迁入本仓库；目前包括 WinUI 前端源码及测试、EXE/MSIX 构建脚本、
-共享 app-server/CLI 的 Python 源码、包工具、生命周期 registry 和最小示例。**原生注入脚本与发行数据生成输入尚未全部迁入，
-还不能仅从本仓库构建完整可连接游戏的发行包，也不是完整公共 SDK。**
+共享 app-server/CLI 的 Python 源码、32 个原生适配脚本、包工具、生命周期 registry 和最小示例。
+**构建需要显式提供本地原版名称表和协议 schema，仓库不分发这两份数据；公共 SDK 仍未完整。**
 完整源码迁移、EXE/MSIX Release 和应用内安装更新仍在进行。
 本项目独立维护，不隶属于 EA；不包含原游戏资源、账户数据或游戏二进制。
 
@@ -17,9 +17,9 @@ dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
 ```
 
 这些命令不依赖原复刻仓库；前端可独立编译，测试不连接游戏。
-实际连接需要后续迁入的共享运行时。`build.ps1` 和两个安装打包脚本目前还要求
+实际连接需要先按下方步骤构建共享运行时。`build.ps1` 和两个安装打包脚本使用
 `src/dist/SWGoH-Runtime.exe`、`src/dist/bluemilk.exe`、`src/assets/names.json`、
-`src/CLI说明.txt`，这些发行输入尚未随本仓库提供；不会用虚拟运行时填补。
+`src/CLI说明.txt`。前三项由本地构建生成，最后一项已随源码提供。
 EXE 打包需要 Inno Setup，MSIX 打包需要对应 Windows SDK，签名证书由构建者自行配置。
 仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
 
@@ -41,9 +41,28 @@ Python/C# 端点读取、Mod 包检查/安装/注册路由、持久回执及输�
 
 `src/runtime/app.py --jsonl` 是 CLI 开发入口；`--jsonl --server auto` 使用共享服务，
 `src/runtime/desktop_host.py --app-server` 是服务入口。双端共用请求协议及包库。
-本地包检查、安装、列举不要求连接游戏；启用真实 Mod 仍需要未迁齐的原生模块。
-Python 文件迁入并不表示原生功能已经在新目录验收，当前不要用此目录替换已安装版本。
+本地包检查、安装、列举不要求连接游戏；启用真实 Mod 需要先生成原生载荷。
+源码迁入并不表示各游戏模式已经重新验收，当前不要用开发输出替换已安装版本。
 `app.py` 保留历史 Tk 控件供回归验证，正式人类入口是 `src/client` 的 WinUI。
+
+## 构建自包含运行时
+
+```powershell
+py -m pip install -r requirements-build.txt
+py tools/build_runtime.py --names C:/BlueMilkInputs/names.json --schema C:/BlueMilkInputs/schema.json
+# 随后可执行 src/client/build.ps1、build-installer.ps1 或 build-msix.ps1
+```
+
+`names.json` 是原版单位 ID 到本地化名称的非空映射；`schema.json` 必须是
+`original-protos-schema-v1` 格式，带源摘要和有效载荷摘要，且包含必要的原版消息类型。
+已有本地原版元数据 dump 可通过 `src/runtime/protobuf_defaults.py` 中的
+`write_schema_bundle(dump, destination)` 生成。两份输入由构建者本地提供，
+不下载线上账号数据、不生成替代游戏规则。`--prepare-only` 仅生成载荷和摘要清单。
+
+生成的本地数据位于忽略的 `src/runtime/assets` 和 `src/assets`，两个 EXE 位于
+`src/dist`，构建临时文件位于 `logs/build-runtime`。最终用户运行 EXE 无需 Python/Node。
+默认不创建试玩截图；显式指定 `capturePath` 才写截图，避免旧机器的硬编码路径。
+当前适配仅接受 `runtime_core.EXPECTED` 对应的 GameAssembly 摘要；其他版本拒绝连接。
 
 ## 运行示例
 
