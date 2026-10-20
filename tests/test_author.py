@@ -11,6 +11,15 @@ from mod_package import inspect_package
 
 
 class AuthorTests(unittest.TestCase):
+    def test_official_battle_control_uses_public_factory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'battle-control.bluemilk'
+            pack(ROOT / 'mods/battle-control', output)
+            manifest = inspect_package(output)['manifest']
+            self.assertEqual(manifest['id'], 'bluemilk.battle-control')
+            self.assertEqual(manifest['capabilities'], ['battle.control'])
+            self.assertIn('sdk.battle.control.install()', (ROOT / 'mods/battle-control/main.js').read_text())
+
     def test_configuration_example_and_runtime_validator_match(self):
         from mod_config_schema import resolve
         self.assertEqual((ROOT / 'tools/mod_config_schema.py').read_bytes(),

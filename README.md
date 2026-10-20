@@ -100,6 +100,11 @@ Windows 路径别名、符号链接、超限内容、重复 JSON 键和哈希不
 `mods-package-register`、`mods-enable`、`mods-disable`、`mods-package-uninstall`。
 安装仅入库，注册仍不等于启用。完整战斗事件、数据查询和 UI SDK 尚待迁移。
 
+`mods/battle-control` 是第二个项目官方 Mod，复用原控制器并通过 SDK 独占拥有。
+启用包不会自动控制下一场；每场须显式 arm。现有客户端控制入口和 CLI 命令统一转发，
+也可通过 `mods-command` 按 Mod ID 调用。已验证酒馆中的两类挂起/恢复、清理失败重试、
+与信息 Mod 共存及卸载后不自动装回；迁移后的实际战斗与跨模式验收仍待完成。
+
 配置接口 `mods-config-read` / `mods-config-write` 共用本地存储，以包摘要区分版本，
 使用读取时的 `revision` 防止覆盖另一入口的修改。保存前须断开占用包的运行时；
 `sdk.config.read()` 在下一次注册后提供配置副本，不自动热更新。

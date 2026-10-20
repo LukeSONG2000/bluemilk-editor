@@ -67,23 +67,29 @@ class Runtime:
             self.script.load()
             from mod_package import inspect_package
             from mod_store import install
-            package = ASSETS / 'information.bluemilk'
-            checked = inspect_package(package)
-            if checked['manifest']['id'] != 'bluemilk.information':
-                raise RuntimeError('Bundled information Mod identity mismatch')
-            installed = install(package, checked['sha256'], bundled=True)
+            bundled = {}
+            for name in ('information', 'battle-control'):
+                package = ASSETS / (name + '.bluemilk')
+                checked = inspect_package(package)
+                identity = 'bluemilk.' + name
+                if checked['manifest']['id'] != identity:
+                    raise RuntimeError('Bundled Mod identity mismatch: ' + name)
+                installed = install(package, checked['sha256'], bundled=True)
+                if not installed.get('suppressed'):
+                    bundled[identity] = checked['sha256']
             from mod_profile import acquire
             startup, selected, leases = acquire()
             self.package_leases.update(leases)
             for _, payload in selected:
                 self.register_package(payload[2])
-            if 'bluemilk.information' not in startup['selections'] and not installed.get('suppressed'):
-                self.register_package(checked['sha256'])
+            for identity, sha in bundled.items():
+                if identity not in startup['selections']:
+                    self.register_package(sha)
             for identity, _ in selected:
                 if startup['selections'][identity]['enabled']:
                     self.call_args('modcommand', 'enable', {'id': identity})
             if information:
-                if installed.get('suppressed') and 'bluemilk.information' not in startup['selections']:
+                if 'bluemilk.information' not in bundled and 'bluemilk.information' not in startup['selections']:
                     raise RuntimeError('Information Mod was uninstalled; explicitly install it before enabling')
                 self.script.exports_sync.modcommand('enable', {'id':'bluemilk.information'})
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')
