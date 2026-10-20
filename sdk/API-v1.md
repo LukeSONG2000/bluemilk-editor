@@ -368,9 +368,8 @@ the normal shared session.
 ### Experimental original battle events
 
 `sdk.battle.events.install({capacity:256})` requires `battle.events.read` and
-must be called in the package factory. Return its lifecycle handle. As with
-the existing SDK installers, one SDK-owned handle is currently allowed per Mod;
-combining multiple providers in a single Mod remains pending. The loader owns
+must be called in the package factory. Return its lifecycle handle, or acquire
+other SDK resources and return `sdk.lifecycle.compose({command})`. The loader owns
 the native subscription, including partial installation and failed-detach retry.
 
 The handle exposes the command `read`, with `{}` for the retained backlog or
@@ -399,6 +398,37 @@ enable/disable, attach/flush/detach failures and retained factory ownership).
 Original-runtime acceptance covers two subscriptions and original basic actions
 in the local six-unit PVE fixture, followed by Home/guard/GC restoration. This
 does not establish performance or cross-mode acceptance.
+
+### Composite SDK resource ownership
+
+Acquire information UI, battle events and/or battle control during the synchronous
+package factory, then return `sdk.lifecycle.compose({command(name,payload){...}})`.
+The command callback is optional; it runs under the existing registry invocation
+and snapshot-query lifetime checks. Composition seals acquisition: later installs,
+duplicate resource kinds and repeated composition are rejected before allocation.
+The handle exposes child status and awaits all child readiness. Returning a single
+acquired handle remains supported for existing packages.
+
+The registry retains all acquired SDK handles even if the factory throws, returns
+the wrong handle, or a later resource fails readiness. Cleanup runs in reverse
+acquisition order and requires each child's `lifecycle: "stopped"`. If a child
+fails, older resources remain owned; explicit retry skips children already
+confirmed stopped. No native handle is discarded to make uninstall appear successful.
+Custom hooks, timers or objects allocated outside SDK providers are not covered.
+
+The trial engine must still use its standalone handle: its asynchronous cleanup
+coordinates control/HUD shutdown and cannot yet safely be composed into that same
+resource group. This does not prevent a separate trial Mod and observer Mod from
+sharing the registry. Existing capability/conflict checks still apply; composition
+does not let two Mods own the same information UI or control provider.
+
+Example `examples/battle-observer` combines information UI, events and snapshot
+queries; it explicitly conflicts with the project's information Mod. Disable the
+existing information provider before enabling it. Tests:
+`node tests/composite_lifecycle.mjs` covers reverse-order failure/retry and partial
+installation. Original-client acceptance covers two enable/disable cycles with
+original basic actions and Home/guard/GC restoration in the local PVE fixture;
+visual layout, cross-mode and performance acceptance are separate.
 
 ### Trial cleanup diagnostics
 
