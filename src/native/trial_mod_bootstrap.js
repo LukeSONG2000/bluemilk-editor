@@ -4,7 +4,7 @@
 rpc.exports.trialstop=()=>requestOriginalTrialStop();
 (async()=>{
  const p=globalThis.preparedTrialPackage;
- BlueMilkMods.registerPackage(p.manifest,p.source,p.sha256);
+ BlueMilkMods.registerPackage(p.manifest,p.source,p.sha256,p.configuration||{});
  await BlueMilkMods.command('enable',{id:p.manifest.id});
  send({kind:'trial-mod-enabled',packageSha256:p.sha256,mods:await BlueMilkMods.command('list')});
  await BlueMilkMods.invoke(p.manifest.id,'start',{});
