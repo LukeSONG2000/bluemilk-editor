@@ -2,7 +2,7 @@
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
 项目正在迁入本仓库；目前包括 WinUI 前端源码及测试、EXE/MSIX 构建脚本、
-包工具、生命周期 registry 和最小示例。**原生运行时/CLI 后端尚未全部迁入，
+共享 app-server/CLI 的 Python 源码、包工具、生命周期 registry 和最小示例。**原生注入脚本与发行数据生成输入尚未全部迁入，
 还不能仅从本仓库构建完整可连接游戏的发行包，也不是完整公共 SDK。**
 完整源码迁移、EXE/MSIX Release 和应用内安装更新仍在进行。
 本项目独立维护，不隶属于 EA；不包含原游戏资源、账户数据或游戏二进制。
@@ -22,6 +22,28 @@ dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
 `src/CLI说明.txt`，这些发行输入尚未随本仓库提供；不会用虚拟运行时填补。
 EXE 打包需要 Inno Setup，MSIX 打包需要对应 Windows SDK，签名证书由构建者自行配置。
 仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
+
+## 开发共享后端与 CLI
+
+Windows 上使用 Python 3.11+（当前验证为 3.13），安装开发依赖：
+
+```powershell
+py -m pip install -r requirements-runtime.txt
+dotnet build src/client_tests/Client.Tests.csproj
+py -m unittest discover -s src/runtime
+'{"id":1,"operation":"mods-package-list"}' | py src/runtime/app.py --jsonl
+```
+
+116 项后端测试覆盖共享连接、认证、前端退出后服务存活、并发自动启动、
+Python/C# 端点读取、Mod 包检查/安装/注册路由、持久回执及输入校验。
+测试还需要 Node（验证旧 Node 工具与 Python 的会话互斥），不连接游戏或发送线上请求。
+测试临时数据位于 `logs/runtime-tests`；UI 控件测试使用独立空名称表，不发布原游戏名称资源。
+
+`src/runtime/app.py --jsonl` 是 CLI 开发入口；`--jsonl --server auto` 使用共享服务，
+`src/runtime/desktop_host.py --app-server` 是服务入口。双端共用请求协议及包库。
+本地包检查、安装、列举不要求连接游戏；启用真实 Mod 仍需要未迁齐的原生模块。
+Python 文件迁入并不表示原生功能已经在新目录验收，当前不要用此目录替换已安装版本。
+`app.py` 保留历史 Tk 控件供回归验证，正式人类入口是 `src/client` 的 WinUI。
 
 ## 运行示例
 
