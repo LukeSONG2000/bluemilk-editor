@@ -292,10 +292,25 @@ public sealed partial class ShellApplication : Application
             }
             await Task.Delay(16000);
             var snapshot = await connection.RefreshAsync();
-            if (snapshot.GetProperty("state").GetString() != "BattleGameState" || snapshot.GetProperty("units").GetArrayLength() != 10)
-                throw new InvalidOperationException("Expected ten native demo units.");
+            bool controlSmoke = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_TRIAL_CONTROL") == "1";
+            var units = snapshot.GetProperty("units");
+            if (snapshot.GetProperty("state").GetString() != "BattleGameState" ||
+                (!controlSmoke && units.GetArrayLength() != 10) ||
+                (controlSmoke && (!units.EnumerateArray().Any(u => u.GetProperty("owner").GetInt32() == 0) ||
+                                  !units.EnumerateArray().Any(u => u.GetProperty("owner").GetInt32() == 1))))
+                throw new InvalidOperationException("Expected native trial teams (ten units for the original demo fixture).");
+            bool trialControlRestored = false;
+            if (controlSmoke)
+            {
+                if (!snapshot.GetProperty("arena").GetProperty("status").GetProperty("armed").GetBoolean())
+                    throw new IOException("Prepared control owner is not armed.");
+                var restored = await connection.ControlAsync("disarm", null);
+                if (restored.GetProperty("arena").ValueKind != JsonValueKind.Null)
+                    throw new IOException("Prepared control owner was not released.");
+                trialControlRestored = true;
+            }
             await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { started, units = 10, disconnected = !connection.HasWorker }));
+            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { started, units = units.GetArrayLength(), trialControlRestored, disconnected = !connection.HasWorker }));
         }
         catch (Exception e)
         {

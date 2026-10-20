@@ -112,6 +112,16 @@ class PreparedTrial:
             raise RuntimeError('No active prepared trial')
         return self.script.exports_sync.snapshot({'detailScope': 'selected'})
 
+    def control(self, payload):
+        if (self.script is None or self.detached or self.complete is not None or self.stop_sent
+                or not self.manifest.get('controlPackageSha256')):
+            raise RuntimeError('No active packaged-control trial')
+        if (not isinstance(payload, dict) or set(payload) != {'command', 'payload'}
+                or payload['command'] not in ('status', 'configure', 'enemy-input', 'disable')
+                or not isinstance(payload['payload'], dict)):
+            raise ValueError('Expected trial control command and payload')
+        return self.script.exports_sync.trialmodcommand(payload['command'], payload['payload'])
+
     def stop(self):
         if self.complete is not None:
             return self.status()

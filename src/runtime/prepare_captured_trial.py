@@ -34,7 +34,13 @@ def read_mode_provenance(path, metadata, capture_info):
     return mode
 
 
-def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None):
+def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None):
+    control_record = None
+    if control is not None:
+        if mode != 'visual' or enemy_control or enemy_ui or enemy_basic_demo or ai_priority_order is not None or experimental_prediction:
+            raise ValueError('Packaged control requires visual trial without legacy control or AI modification')
+        from trial_control_package import read_control
+        control_record = read_control(control)
     enemy_control = enemy_control or enemy_ui
     if enemy_ui and ai_priority_order is not None:
         raise ValueError("Enemy UI cannot combine with AI priority")
@@ -90,7 +96,12 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
         modules += ['enemy_manual_ui.js']
     if enemy_basic_demo or enemy_control:
         modules += ['enemy_input_gate.js']
+    if control_record:
+        modules += ['enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js',
+                    'mod_runtime.js', 'bridge.js', 'trial_control.js']
     source = '\n'.join((root / n).read_text(encoding='utf-8-sig') for n in modules)
+    if control_record:
+        source += '\nglobalThis.trialControlPackage=' + json.dumps(control_record) + ';\n'
     for name, value in [('capturedBytes', battle_bytes), ('inventoryBytes', inventory_bytes)]:
         source += '\nglobalThis.' + name + '=new Uint8Array(' + json.dumps(list(value), separators=(',', ':')) + ');\n'
     source += 'globalThis.capturedMetadata=' + json.dumps(metadata) + ';\n'
@@ -112,7 +123,7 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
     source_bytes = source.encode('utf-8')
     prefix = Path(prefix)
     js, manifest_path = Path(str(prefix) + '.js'), Path(str(prefix) + '.json')
-    manifest = {'schemaVersion': 1, 'mode': mode, 'durationSeconds': duration, 'auto': auto,
+    manifest = {'schemaVersion': 1, 'mode': mode, 'controlPackageSha256': control_record['sha256'] if control_record else None, 'durationSeconds': duration, 'auto': auto,
                 'informationDisplay': mode == 'visual', 'currentSelection': current_selection, 'experimentalPrediction': experimental_prediction,
                 'aiPriorityOrder': ai_priority_order, 'battleCli': mode == 'visual', 'traceAI': trace_ai, 'enemyBasicDemo': enemy_basic_demo, 'enemyControl': enemy_control, 'enemyManualUI': enemy_ui,
                 'squadType': squad_type, 'mission': metadata.get('mission'),

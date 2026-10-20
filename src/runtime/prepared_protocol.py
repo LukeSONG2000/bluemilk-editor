@@ -5,7 +5,7 @@ import time
 import uuid
 from prepared_trial import PreparedTrial, read_prepared
 
-OPERATIONS = ['capabilities', 'prepare', 'start', 'snapshot', 'status', 'disconnect']
+OPERATIONS = ['capabilities', 'prepare', 'start', 'snapshot', 'status', 'disconnect', 'control']
 
 
 class PreparedService:
@@ -43,6 +43,11 @@ class PreparedService:
         from runtime_core import ASSETS, DATA
         from capture_prepare import prepare_request
         return prepare_request(payload, ASSETS, DATA/'prepared')
+
+    def control(self, payload):
+        if self.trial is None:
+            raise RuntimeError('No prepared trial started')
+        return self.trial.control(payload)
 
     def snapshot(self):
         if self.trial is None:
@@ -99,13 +104,13 @@ def run_prepared(source, destination, service=None):
                 if operation not in OPERATIONS:
                     raise ValueError('Unknown prepared trial operation')
                 payload = request.get('payload')
-                if operation not in ('start', 'prepare') and payload not in (None, {}):
+                if operation not in ('start', 'prepare', 'control') and payload not in (None, {}):
                     raise ValueError('This operation takes no payload')
                 if operation == 'capabilities':
                     result = dict(protocol='prepared-trial-v1', operations=OPERATIONS,
                                   scope='Explicit locally prepared script; not arbitrary replay data')
                 else:
-                    result = getattr(service, operation)(payload) if operation in ('start', 'prepare') else getattr(service, operation)()
+                    result = getattr(service, operation)(payload) if operation in ('start', 'prepare', 'control') else getattr(service, operation)()
                 emit(dict(id=request_id, ok=True, result=result))
             except Exception as error:
                 emit(dict(id=request_id, ok=False, error=str(error)))
