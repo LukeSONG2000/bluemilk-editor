@@ -15,6 +15,8 @@ from prepare_captured_trial import prepare
 class TrialControlTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.folder=Path(self.temp.name)
+        self.trial_package=self.folder/'trial.bluemilk'
+        pack(Path(__file__).resolve().parents[2]/'mods/trial',self.trial_package)
         self.package=self.folder/'control.bluemilk'
         pack(Path(__file__).resolve().parents[2]/'mods/battle-control',self.package)
         from mod_package import inspect_package
@@ -55,7 +57,7 @@ class TrialControlTests(unittest.TestCase):
     def test_assembler_embeds_checked_package_without_legacy_gate(self):
         native=Path(__file__).resolve().parents[1]/'native'
         with patch('prepare_captured_trial.read_capture',return_value=(b'capture',{}, {'sha256':'a'*64})),patch('prepare_captured_trial.read_mode_provenance',return_value={'battleType':1,'combatType':0}),patch('protobuf_defaults.read_schema_bundle',return_value=({},'b'*64)),patch('prepare_captured_trial.materialize',return_value=b'normalized'):
-            m=prepare('battle','inventory',None,self.folder/'trial',8,'visual',30,True,schema_bundle='schema',module_root=native,control=self.request)
+            m=prepare('battle','inventory',None,self.folder/'trial',8,'visual',30,True,schema_bundle='schema',module_root=native,control=self.request,trial_package=self.trial_package)
         source=Path(m['source']).read_text()
         self.assertEqual(m['controlPackageSha256'],self.digest)
         self.assertIn('globalThis.trialControlPackage=',source)

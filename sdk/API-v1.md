@@ -225,4 +225,36 @@ Cleanup drains accepted Mod commands before leaving and releases the offline gua
 and fixture GC roots only after Mod cleanup succeeds. Unconfirmed cleanup retains
 the worker/session; no force-detach or automatic replay is provided. An unrecoverable
 native cleanup failure still needs runtime recovery/restart, not a success receipt.
-The prepared-trial capability itself is not yet an independent official Mod.
+The prepared-trial engine is now owned by the official `bluemilk.trial` package.
+
+
+## Original trial lifecycle
+
+`mods/trial` exports `sdk => sdk.battle.trial.install()`. The SDK requires the
+exclusive `battle.trial` capability and retains the provider handle during factory
+creation. Enabling only acquires the lifecycle owner; it does not create a fixture,
+install a network guard, enter battle, or spend resources. The original visual
+engine is invoked only by explicit `start` in a prepared worker. A normal shared
+connection can register/enable/disable the package, but rejects `start` because no
+capture has been selected there.
+
+Commands `status`, `start`, `stop` take `{}`. `stop` acknowledges a stop request;
+it is not confirmation of restoration. The lifecycle `stop()` waits for the same
+original engine promise and requires Home, guard restoration, GC release, and no
+cleanup errors. Start is single-use per prepared worker, even after disable and
+re-enable. Early host cancellation survives asynchronous package bootstrap.
+
+New visual preparation embeds one verified byte snapshot of `trial.bluemilk` and
+records `trialPackageSha256`; captured data and the package entry are pinned by the
+prepared source hash. The prepared manifest is an explicit executable artifact;
+changing/uninstalling a package in the shared store does not rewrite older
+prepared artifacts. Re-prepare to select the newly bundled version. Store-selected
+trial versions and configuration are not yet applied to the private worker.
+
+The original engine first stops its owned control resource without recursively
+entering the registry lock. After engine cleanup resolves, the bootstrap shuts
+down the registry and only then publishes completion. The host additionally
+requires the matching trial package and all registry entries to be disabled before
+detaching. Cleanup failures retain ownership and may require a runtime restart;
+they never become a successful receipt. This lifecycle extraction retains the
+existing capture/mode restrictions and does not prove replay fidelity for new modes.

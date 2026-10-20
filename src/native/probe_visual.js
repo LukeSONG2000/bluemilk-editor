@@ -3,9 +3,9 @@
 // this file. Keep loaded until visual-probe-complete reports cleanup.
 // Optional preceding globalThis.visualProbeOptions:
 // {autoClick:true,maxDurationMs:35000,capturePath:'F:/.../frame.png',fixture:{seed:8}}
-(async()=>{
+globalThis.runOriginalVisualTrial=async(overrides={})=>{
  const R=RuntimeApi,A=R.arg,call=OriginalFixtureTools.call;
- const options=Object.assign({autoClick:true,autoAfterClick:false,maxDurationMs:35000,capturePath:null},globalThis.visualProbeOptions||{});
+ const options=Object.assign({autoClick:true,autoAfterClick:false,maxDurationMs:35000,capturePath:null},globalThis.visualProbeOptions||{},overrides);
  if(typeof options.autoClick!=='boolean'||typeof options.autoAfterClick!=='boolean'||!Number.isFinite(options.maxDurationMs)||options.maxDurationMs<=0)throw Error('Invalid visual probe options');
  if(options.capturePath!==null&&typeof options.capturePath!=='string')throw Error('capturePath must be a string or null');
  const hooks=[],cleanup={home:false,exitedOwnedStates:0,guardRestored:false,gcReleased:false,errors:[]};
@@ -109,13 +109,14 @@
   // schedules main-thread work and must finish before the original entry.
   if(globalThis.trialControlPackage)await prepareTrialControl(f);
   await R.runOnMainThreadOnce(()=>{
+   if(globalThis.originalTrialStopRequested)throw Error('Trial stop requested before entry');
    if(foreignTransition||!current().equals(entryState))throw Error('Original state changed before trial entry');
    const result=enterType('BattleGameState',f.data);if(!result.isNull())entered=result;
    globalThis.visualProbe={fixture:f,entered,enemyGate:options.enemyControl?enemyGate:null};
   });
   const deadline=Date.now()+options.maxDurationMs;
   while(Date.now()<deadline){
-   if(globalThis.visualProbe?.stopRequested)break;
+   if(globalThis.originalTrialStopRequested||globalThis.visualProbe?.stopRequested)break;
    let shouldStop=false;
    await R.runOnMainThreadOnce(()=>{
     if(enemyGate&&!enemyGate.tickPolicy()){
@@ -192,8 +193,9 @@
   if(globalThis.visualProbe)visualProbe.stopping=true;
   let modsClean=true;
   if(globalThis.trialControlPackage)try{
-   await BlueMilkMods.shutdown();
-   send({kind:'trial-mod-cleaned',mods:await BlueMilkMods.command('list')});
+   if(options.managedByTrialMod)await stopPreparedBattleControl();
+   else await BlueMilkMods.shutdown();
+   send({kind:options.managedByTrialMod?'trial-control-resources-stopped':'trial-mod-cleaned',mods:await BlueMilkMods.command('list')});
   }catch(exception){modsClean=false;cleanup.errors.push('Mod cleanup: '+String(exception));}
   try{globalThis.FrameProfile?.finish();}
   catch(exception){cleanup.errors.push('frame profile cleanup: '+String(exception));}
@@ -254,10 +256,13 @@
    }catch(exception){cleanup.errors.push('definitions/GC release: '+String(exception));}
    verifyCapture();
    const verifiedVisualBattle=!error&&readyAt!==0&&clicked&&terminalObserved&&serviceCalls===0&&cleanup.home&&cleanup.guardRestored&&cleanup.errors.length===0;
-   send({kind:'visual-probe-complete',verifiedVisualBattle,error,clicked,terminalObserved,lastSnapshot,serviceCalls,
+   const result={kind:'visual-probe-complete',verifiedVisualBattle,error,clicked,terminalObserved,lastSnapshot,serviceCalls,
     blockedSocketCalls:guard?guard.counts:null,socketDiagnostics:guard?guard.diagnostics():null,capture,cleanup,
     originalUiObserved:readyAt!==0,screenshotVerified:capture.verified,
-    ownership:{exitedOwnBattle,campaignExpected,foreignTransition}});
+    ownership:{exitedOwnBattle,campaignExpected,foreignTransition}};
+   if(!options.managedByTrialMod)send(result);
+   return result;
   }
  }
-})().catch(error=>send({kind:'original-visual-outer-error',error:String(error)}));
+};
+if(!globalThis.deferOriginalVisualTrial)runOriginalVisualTrial().catch(error=>send({kind:'original-visual-outer-error',error:String(error)}));

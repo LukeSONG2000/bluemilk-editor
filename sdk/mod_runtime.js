@@ -61,7 +61,17 @@ globalThis.BlueMilkMods=(()=>{
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
-    battle:Object.freeze({control:Object.freeze({
+    battle:Object.freeze({trial:Object.freeze({
+     install(){
+      if(!creating)throw Error('Acquire trial ownership during the Mod factory call');
+      if(!manifest.capabilities.includes('battle.trial'))throw Error('Missing capability: battle.trial');
+      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
+      if(typeof installOriginalTrialMod!=='function')throw Error('Original trial provider unavailable');
+      owned=installOriginalTrialMod(manifest.id);
+      records.get(manifest.id).instance=owned;
+      return owned;
+     }
+    }),control:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire battle control during the Mod factory call');
       if(!manifest.capabilities.includes('battle.control'))throw Error('Missing capability: battle.control');
@@ -129,8 +139,9 @@ globalThis.BlueMilkMods=(()=>{
    }
    for(const other of records.values())if(other.state!=='disabled'&&
     (r.manifest.conflicts.includes(other.manifest.id)||other.manifest.conflicts.includes(r.manifest.id)))throw Error('Conflicting Mod: '+other.manifest.id);
-   if(r.manifest.capabilities.includes('battle.control')&&[...records.values()].some(other=>other!==r&&other.state!=='disabled'&&other.manifest.capabilities.includes('battle.control')))
-    throw Error('Another Mod owns the exclusive battle.control capability');
+   for(const capability of ['battle.control','battle.trial'])
+    if(r.manifest.capabilities.includes(capability)&&[...records.values()].some(other=>other!==r&&other.state!=='disabled'&&other.manifest.capabilities.includes(capability)))
+     throw Error('Another Mod owns the exclusive '+capability+' capability');
    r.state='enabling';r.error=null;
    try{
     r.instance=r.factory();

@@ -124,3 +124,10 @@ class ProfileTests(unittest.TestCase):
             b = self.package('org.example.b', capabilities=['battle.control'])
             with self.assertRaisesRegex(ValueError, 'exclusive battle.control'):
                 write(read()['revision'], {'org.example.a': a, 'org.example.b': b})
+
+    def test_two_trial_owners_rejected_before_startup(self):
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            a = self.package('org.example.a', capabilities=['battle.trial'])
+            b = self.package('org.example.b', capabilities=['battle.trial'])
+            with self.assertRaisesRegex(ValueError, 'exclusive battle.trial'):
+                write(read()['revision'], {'org.example.a': a, 'org.example.b': b})

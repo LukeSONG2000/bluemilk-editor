@@ -62,6 +62,18 @@ class HostTests(unittest.TestCase):
         self.assertEqual(self.released,0)
         self.assertEqual(len(self.host.errors),2)
 
+    def test_packaged_trial_requires_matching_disabled_registry(self):
+        self.host.manifest['trialPackageSha256']='a'*64
+        self.host.complete=dict(GOOD)
+        self.assertFalse(self.host.cleanup_confirmed())
+        record={'manifest':{'id':'bluemilk.trial'},'packageSha256':'a'*64,'state':'enabled'}
+        self.host.complete['trialMod']={'packageSha256':'a'*64,'registry':{'mods':[record]}}
+        self.assertFalse(self.host.cleanup_confirmed())
+        record['state']='disabled'
+        self.assertTrue(self.host.cleanup_confirmed())
+        record['packageSha256']='b'*64
+        self.assertFalse(self.host.cleanup_confirmed())
+
     def test_strict_cleanup(self):
         self.assertFalse(cleanup_complete(None,'visual'))
         self.assertFalse(cleanup_complete(GOOD,'headless'))

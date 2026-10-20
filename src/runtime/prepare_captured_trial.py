@@ -34,7 +34,7 @@ def read_mode_provenance(path, metadata, capture_info):
     return mode
 
 
-def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None):
+def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None, trial_package=None, trial_sha=None):
     control_record = None
     if control is not None:
         if mode != 'visual' or enemy_control or enemy_ui or enemy_basic_demo or ai_priority_order is not None or experimental_prediction:
@@ -82,6 +82,13 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
     battle_bytes = materialize(raw_battle, 'BattleData', schemas)
     inventory_bytes = b'' if current_selection else materialize(raw_inventory, 'Inventory', schemas)
     root = Path(module_root) if module_root else Path(__file__).resolve().parent
+    trial_record = None
+    if mode == 'visual':
+        from trial_package import read_trial_package
+        package_path = Path(trial_package) if trial_package else root/'trial.bluemilk'
+        if trial_package is None and not package_path.exists():
+            package_path = Path(__file__).resolve().parent/'assets/trial.bluemilk'
+        trial_record = read_trial_package(package_path, trial_sha)
     modules = ['runtime_api.js', 'unity_scene_api.js', 'offline_socket_guard.js',
                'original_fixture.js', 'battle_proto.js', 'isolated_inventory.js',
                'captured_battle.js', 'definition_scope.js', 'selected_squad.js', 'captured_trial.js']
@@ -96,10 +103,14 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
         modules += ['enemy_manual_ui.js']
     if enemy_basic_demo or enemy_control:
         modules += ['enemy_input_gate.js']
+    if mode == 'visual':
+        modules += ['mod_runtime.js', 'trial_mod.js']
     if control_record:
         modules += ['enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js',
-                    'mod_runtime.js', 'bridge.js', 'trial_control.js']
+                    'bridge.js', 'trial_control.js']
     source = '\n'.join((root / n).read_text(encoding='utf-8-sig') for n in modules)
+    if trial_record:
+        source += '\nglobalThis.deferOriginalVisualTrial=true;globalThis.preparedTrialPackage=' + json.dumps(trial_record) + ';\n'
     if control_record:
         source += '\nglobalThis.trialControlPackage=' + json.dumps(control_record) + ';\n'
     for name, value in [('capturedBytes', battle_bytes), ('inventoryBytes', inventory_bytes)]:
@@ -120,10 +131,12 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
             'autoClick': auto, 'autoAfterClick': auto, 'traceAI': trace_ai, 'experimentalPrediction': experimental_prediction, 'enemyBasicDemo': enemy_basic_demo, 'enemyControl': enemy_control, 'enemyManualUI': enemy_ui,
             'aiPriorityOrder': ai_priority_order, 'maxDurationMs': duration * 1000, 'capturePath': None}) + ';\n'
     source += (root / ('probe_visual.js' if mode == 'visual' else 'probe_simulation.js')).read_text(encoding='utf-8-sig')
+    if trial_record:
+        source += '\n' + (root/'trial_mod_bootstrap.js').read_text(encoding='utf-8-sig')
     source_bytes = source.encode('utf-8')
     prefix = Path(prefix)
     js, manifest_path = Path(str(prefix) + '.js'), Path(str(prefix) + '.json')
-    manifest = {'schemaVersion': 1, 'mode': mode, 'controlPackageSha256': control_record['sha256'] if control_record else None, 'durationSeconds': duration, 'auto': auto,
+    manifest = {'schemaVersion': 1, 'mode': mode, 'trialPackageSha256': trial_record['sha256'] if trial_record else None, 'controlPackageSha256': control_record['sha256'] if control_record else None, 'durationSeconds': duration, 'auto': auto,
                 'informationDisplay': mode == 'visual', 'currentSelection': current_selection, 'experimentalPrediction': experimental_prediction,
                 'aiPriorityOrder': ai_priority_order, 'battleCli': mode == 'visual', 'traceAI': trace_ai, 'enemyBasicDemo': enemy_basic_demo, 'enemyControl': enemy_control, 'enemyManualUI': enemy_ui,
                 'squadType': squad_type, 'mission': metadata.get('mission'),
