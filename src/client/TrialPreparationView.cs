@@ -12,7 +12,9 @@ internal sealed class TrialPreparationView : StackPanel
     private readonly ComboBox squad = new() { Header = "使用库存中的哪份已保存阵容", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly NumberBox duration = new() { Header = "试玩最长时长（秒）", Value = 60, Minimum = 15, Maximum = 600, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
     private readonly CheckBox auto = new() { Content = "由原版 AI 自动操作我方" };
-    private readonly TextBox controlPackage = new() { Header = "战斗控制 Mod 包（可选 .bluemilk）", PlaceholderText = "留空时不加载战斗控制" };
+    private readonly TextBox controlPackage = new() { Header = "外部战斗控制 Mod 包（.bluemilk）" };
+    private readonly ComboBox controlSource = new() { Header = "战斗控制来源", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly StackPanel externalControl = new() { Spacing = 8, Visibility = Visibility.Collapsed };
     private readonly ComboBox controlMode = new() { Header = "试玩敌方控制", SelectedIndex = 0 };
     private readonly Button prepare = new() { Content = "生成试玩清单" };
     private readonly InfoBar result = new() { IsOpen = true, IsClosable = false, Title = "离线准备", Message = "生成清单不会连接游戏或进入战斗。模式来源、文件哈希及原元数据会先校验。" };
@@ -25,9 +27,10 @@ internal sealed class TrialPreparationView : StackPanel
     {
         this.connection = connection;
         Spacing = 12;
-        void FileField(TextBox box, string extension = ".pb")
+        void FileField(TextBox box, string extension = ".pb", StackPanel? parent = null)
         {
-            form.Children.Add(box);
+            parent ??= form;
+            parent.Children.Add(box);
             var choose = new Button { Content = "选择文件" };
             choose.Click += async (_, _) =>
             {
@@ -41,7 +44,7 @@ internal sealed class TrialPreparationView : StackPanel
                 }
                 catch (Exception e) { ShowError(e); }
             };
-            form.Children.Add(choose);
+            parent.Children.Add(choose);
         }
         FileField(battle); FileField(inventory);
         // Values follow original SquadTypeEnum, not a replacement battle mode.
@@ -53,7 +56,14 @@ internal sealed class TrialPreparationView : StackPanel
                 : i <= 37 ? $"小队活动阵容 {i - 16}" : $"小队活动防守阵容 {i - 37}", Tag = i });
         squad.SelectedIndex = -1;
         form.Children.Add(squad); form.Children.Add(duration); form.Children.Add(auto);
-        FileField(controlPackage, ".bluemilk");
+        controlSource.Items.Add("不加载战斗控制");
+        controlSource.Items.Add("使用共享库选择的版本");
+        controlSource.Items.Add("选择外部 Mod 包");
+        controlSource.SelectedIndex = 0;
+        controlSource.SelectionChanged += (_, _) => Update();
+        form.Children.Add(controlSource);
+        FileField(controlPackage, ".bluemilk", externalControl);
+        form.Children.Add(externalControl);
         controlMode.Items.Add("一键嘲讽"); controlMode.Items.Add("敌方回合手动操作"); controlMode.SelectedIndex = 0;
         form.Children.Add(controlMode);
         form.Children.Add(prepare); Children.Add(form); Children.Add(result);
@@ -65,8 +75,13 @@ internal sealed class TrialPreparationView : StackPanel
 
     private void Update()
     {
+        externalControl.Visibility = controlSource.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        externalControl.IsHitTestVisible = !busy && !connection.HasWorker;
+        foreach (var control in externalControl.Children.OfType<Control>())
+            control.IsEnabled = !busy && !connection.HasWorker;
         foreach (var control in form.Children.OfType<Control>())
             control.IsEnabled = !busy && !connection.HasWorker;
+        controlMode.IsEnabled = !busy && !connection.HasWorker && controlSource.SelectedIndex != 0;
     }
 
     private void ShowError(Exception error)
@@ -93,17 +108,20 @@ internal sealed class TrialPreparationView : StackPanel
                 throw new ArgumentException("试玩时长须为 15 至 600 的整数秒。");
             var request = new Dictionary<string, object> { ["battle"] = battle.Text, ["inventory"] = inventory.Text,
                 ["squadType"] = (int)selected.Tag, ["durationSeconds"] = (int)duration.Value, ["auto"] = auto.IsChecked == true };
-            if (!string.IsNullOrWhiteSpace(controlPackage.Text))
+            var policy = new { enabled = false, oneClickTaunt = controlMode.SelectedIndex == 0,
+                allowedTargets = Array.Empty<string>(), manualUI = controlMode.SelectedIndex == 1 };
+            if (controlSource.SelectedIndex == 1)
+                request["control"] = new { policy };
+            else if (controlSource.SelectedIndex == 2)
             {
                 if (!Path.IsPathFullyQualified(controlPackage.Text) || !File.Exists(controlPackage.Text))
-                    throw new ArgumentException("请选择实际存在的战斗控制 Mod 包，或清空此项。");
+                    throw new ArgumentException("请选择实际存在的战斗控制 Mod 包。");
                 if (new FileInfo(controlPackage.Text).Length > 16 * 1024 * 1024)
                     throw new ArgumentException("Mod 包不得超过 16 MiB。");
                 using var stream = File.OpenRead(controlPackage.Text);
                 var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
                 request["control"] = new { package = controlPackage.Text, sha256 = digest,
-                    policy = new { enabled = false, oneClickTaunt = controlMode.SelectedIndex == 0,
-                        allowedTargets = Array.Empty<string>(), manualUI = controlMode.SelectedIndex == 1 } };
+                    policy };
             }
             var response = await connection.PrepareTrialAsync(request);
             var file = response.GetProperty("manifest").GetString() ?? throw new IOException("缺少生成结果。");

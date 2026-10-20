@@ -3,7 +3,7 @@
 // No second injection, controller implementation or battle-rule replacement.
 globalThis.prepareTrialControl=async fixture=>{
  const p=globalThis.trialControlPackage;
- BlueMilkMods.registerPackage(p.manifest,p.source,p.sha256);
+ BlueMilkMods.registerPackage(p.manifest,p.source,p.sha256,p.configuration||{});
  await BlueMilkMods.command('enable',{id:p.manifest.id});
  const status=await BlueMilkMods.invoke(p.manifest.id,'arm',{
   ...p.policy,scope:'all',combatType:fixture.combatType

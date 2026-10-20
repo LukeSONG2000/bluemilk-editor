@@ -66,4 +66,25 @@ class TrialControlTests(unittest.TestCase):
         self.assertIn('if(guard&&modsClean)',source)
         self.assertIn('if(cleanup.home&&modsClean)',source)
 
+    def test_managed_assembler_pins_configuration_and_store_reference(self):
+        from trial_store import snapshot
+        from mod_config import read, write
+        root = self.folder/'store'
+        record = snapshot(self.package, self.digest, root,
+                          identity='bluemilk.battle-control', capability='battle.control')
+        write(self.digest, record['configurationRevision'], {'sample': 'preserved'}, root)
+        record = snapshot(self.package, self.digest, root,
+                          identity='bluemilk.battle-control', capability='battle.control')
+        record['policy'] = self.request['policy']
+        native=Path(__file__).resolve().parents[1]/'native'
+        with patch('prepare_captured_trial.read_capture',return_value=(b'capture',{}, {'sha256':'a'*64})),patch('prepare_captured_trial.read_mode_provenance',return_value={'battleType':1,'combatType':0}),patch('protobuf_defaults.read_schema_bundle',return_value=({},'b'*64)),patch('prepare_captured_trial.materialize',return_value=b'normalized'):
+            m=prepare('battle','inventory',None,self.folder/'managed',8,'visual',30,True,
+                      schema_bundle='schema',module_root=native,managed_control=record,
+                      trial_package=self.trial_package)
+        self.assertEqual(m['managedControlPackage'], {
+            'sha256': self.digest, 'configurationRevision': record['configurationRevision']})
+        source=Path(m['source']).read_text()
+        self.assertIn('"configuration": {"sample": "preserved"}', source)
+        self.assertIn('p.sha256,p.configuration||{}', source)
+
 if __name__=='__main__':unittest.main()

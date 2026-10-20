@@ -67,10 +67,10 @@ def prepare(names_path, schema_path):
             pack(ROOT / "mods" / name, package)
             inspect_package(package)
             shutil.copyfile(package, assets / package.name)
-            if name == "trial":
+            if name in ("trial", "battle-control"):
                 shutil.copyfile(package, trial / package.name)
     manifest(assets, modules + ["names.json", "information.bluemilk", "battle-control.bluemilk", "trial.bluemilk"])
-    manifest(trial, TRIAL + ["schema.json", "trial.bluemilk"])
+    manifest(trial, TRIAL + ["schema.json", "trial.bluemilk", "battle-control.bluemilk"])
     client_data = ROOT / "src/assets"
     client_data.mkdir(exist_ok=True)
     (client_data / "names.json").write_bytes(names_bytes)
