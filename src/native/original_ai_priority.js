@@ -43,7 +43,7 @@ globalThis.installOriginalAIPriority=(context,order)=>{
  const treeClass=R.findClass('AbilityDecisionTreeDO');
  const tree=R.newObject(treeClass,R.findMethod(treeClass,'.ctor',3),[A.ref(ref(source,'_id')),A.ref(nodes[order[0]]),A.value('bool',before.evaluateBasic)]);
  const originalRoot=ref(source,'_rootNode'),privateRoot=ref(tree,'_rootNode');
- let stopped=false,substitutions=0;const errors=[];
+ let stopped=false,detached=false,substitutions=0;const errors=[];
  const hook=Interceptor.attach(R.findMethod(R.findClass('BattleAbilityAIController'),'GetAbilityAIResult',2,['AbilityDecisionNodeDO','BattleAbilityAIContext']).readPointer(),{
   onEnter(args){try{
    if(stopped||!ref(args[0],'_battleContext').equals(context)||!args[1].equals(originalRoot))return;
@@ -56,5 +56,7 @@ globalThis.installOriginalAIPriority=(context,order)=>{
  return {treeFor:owner=>owner===1?tree:source,
   snapshot:()=>({kind:'original-ai-priority',scope:'owned enemy original evaluator with private reordered chain',order,originalOrder,substitutions,errors,
    originalUnchanged:JSON.stringify(readOriginalAITree(source).graph)===JSON.stringify(before),graph:readOriginalAITree(tree).graph}),
-  stop(){if(stopped)return;stopped=true;hook.detach();}};
+  // Disable substitutions immediately, but retain the hook until detach succeeds.
+  // A failed detach must remain retryable by the owning trial's cleanup loop.
+  stop(){if(detached)return;stopped=true;hook.detach();detached=true;}};
 };
