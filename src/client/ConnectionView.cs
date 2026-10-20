@@ -194,7 +194,7 @@ internal sealed class ConnectionView : StackPanel
         detail.Text = IsPreparedTrial ? "正在运行本地私人试玩；断开或关闭窗口将停止并等待恢复酒馆。"
             : IsTrialObserver ? "仅读取已有私人试玩，不另行注入。"
             : runtime?.IsShared == true ? "已连接共享服务。关闭窗口保留服务与 Mod；“断开并恢复”会断开所有入口共用的游戏会话。"
-            : InformationEnabled ? "本次连接已启用游戏内信息拓展。敌方控制可在战斗助手中单独配置。" : "游戏内信息拓展未启用，可先断开后在战斗助手中设置。";
+            : InformationEnabled ? "本次连接已启用游戏内信息拓展。敌方控制可在战斗助手中单独配置。" : "已连接共享运行时；Mod 管理页显示当前状态与下次连接的启动选择。";
         SnapshotChanged?.Invoke(snapshot);
     }
 

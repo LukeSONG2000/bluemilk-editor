@@ -21,7 +21,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
                     'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
-                    'mods-config-read','mods-config-write'})
+                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write'})
 
 
 class ProtocolSession:
@@ -64,6 +64,16 @@ class ProtocolSession:
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
+            elif operation in ('mods-profile-read', 'mods-profile-write'):
+                from mod_profile import read, write
+                if operation == 'mods-profile-read':
+                    if payload not in (None, {}):
+                        raise ValueError('mods-profile-read takes no payload')
+                    result = read()
+                else:
+                    if not payload or set(payload) != {'revision', 'selections'}:
+                        raise ValueError('mods-profile-write requires revision and selections')
+                    result = write(payload['revision'], payload['selections'])
             elif operation in ('mods-config-read', 'mods-config-write'):
                 from mod_config import read, write
                 fields = {'sha256'} if operation == 'mods-config-read' else {'sha256', 'revision', 'values'}

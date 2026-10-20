@@ -108,6 +108,8 @@ def remove(sha256, root=None):
     root = Path(root) if root else directory()
     with locked(root):
         manifest, _, _ = _registration(sha256, root)
+        from mod_profile import assert_not_selected
+        assert_not_selected(root, sha256)
         installed = _discover(root)
         for other in installed:
             dependency = other['manifest']

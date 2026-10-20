@@ -74,7 +74,7 @@ Removal records a persistent opt-out from bundled auto-installation. Reconnectin
 does not silently reinstall the information Mod. An explicit package install clears
 the opt-out. Requesting information on connect while it is uninstalled fails with a
 reinstall instruction. Uninstall does not touch game files or operation receipts.
-The marker records the Mod ID and removed hash; it is not an enable-on-start profile.
+The marker records the Mod ID and removed hash; startup selections are stored separately.
 
 ## 配置快照
 
@@ -115,3 +115,25 @@ The marker records the Mod ID and removed hash; it is not an enable-on-start pro
 读取时补齐未保存字段的默认值；保存时校验全部有效值，客户端和 CLI 规则相同。
 输入界面保留修订冲突与占用锁检查，失败不关闭表单，也不重发请求。
 见 `examples/configuration/mod.json`。跨版本配置迁移仍未实现。
+
+## 启动版本选择
+
+`mods-profile-read` 无 payload，返回 `revision` 和 `selections`。
+`mods-profile-write` 用读取的 revision 原子替换完整选择，不执行代码：
+
+```json
+{"id":"save","operation":"mods-profile-write","payload":{"revision":"读取的修订","selections":{"org.example.configuration":{"sha256":"已安装包的64位摘要","enabled":true}}}}
+```
+
+最多 32 个 Mod，每个 ID 只能选一个精确包摘要。`enabled:false` 表示下次连接时
+仅注册，不执行；删除该 ID 表示取消启动选择。保存返回 `activation:next-connection`。
+编辑正在载入的版本须先断开；当前会话不自动改变。临时 `mods-enable/disable` 不改启动配置。
+下次连接会重新验证全部已选包，原子取得包占用锁，按依赖顺序注册及启用。
+启用的依赖必须同时选中、启用并满足精确版本；循环、冲突和不兼容包拒绝加载。
+坏包/缺失包不会被静默忽略，启动失败继续沿用确认恢复原则，不能确认清理则保留会话。
+`connect` 的 `information:true` 是额外的显式启用请求；false 不撤销启动配置中的启用选择。
+
+升级流程：安装新包 → 断开 → 修改选择为新摘要 → 重新连接确认运行状态。
+旧包和旧版配置保留，可按同样流程选回；新包不自动继承旧配置。
+选中的版本不能卸载，必须先移除启动选择。WinUI“启动设置”使用同一协议。
+这不是远程更新源、自动升级或自动回滚；已有包安装操作仍不会自动选择或执行新版本。

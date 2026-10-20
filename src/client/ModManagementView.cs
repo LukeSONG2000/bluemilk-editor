@@ -14,6 +14,7 @@ internal sealed class ModManagementView : StackPanel
     private readonly Button disable = new() { Content = "停用并恢复", IsEnabled = false };
     private readonly Button uninstall = new() { Content = "卸载", IsEnabled = false };
     private readonly Button configure = new() { Content = "配置", IsEnabled = false };
+    private readonly Button startup = new() { Content = "启动设置", IsEnabled = false };
     private readonly TextBlock package = new() { Text = "选择 .bluemilk 文件以检查内容。", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 280 };
@@ -23,6 +24,7 @@ internal sealed class ModManagementView : StackPanel
     private string? inspectedPath, inspectedHash;
     private bool busy, gameConnected;
     private readonly Dictionary<string, JsonElement> runtimeMods = new();
+    private JsonElement startupSelections;
     private sealed record Row(string Id, string Hash, string Name, string Version, string Usage);
 
     internal ModManagementView(Func<nint> windowHandle)
@@ -40,6 +42,7 @@ internal sealed class ModManagementView : StackPanel
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(load); actions.Children.Add(enable); actions.Children.Add(disable); actions.Children.Add(uninstall); Children.Add(actions);
         actions.Children.Add(configure);
+        actions.Children.Add(startup);
         Children.Add(new TextBlock { Text = "仅启用可信来源的 Mod。它们在游戏进程中执行；发布者名称和文件摘要不证明作者身份。", TextWrapping = TextWrapping.Wrap });
         choose.Click += async (_, _) => {
             try {
@@ -57,6 +60,7 @@ internal sealed class ModManagementView : StackPanel
         disable.Click += async (_, _) => { try { await ChangeAsync("mods-disable"); } catch { } };
         uninstall.Click += async (_, _) => { try { await ChangeAsync("mods-package-uninstall"); } catch { } };
         configure.Click += async (_, _) => { try { await ConfigureAsync(); } catch { } };
+        startup.Click += async (_, _) => { try { await StartupAsync(); } catch { } };
         list.SelectionChanged += (_, _) => Update();
     }
 
@@ -81,6 +85,7 @@ internal sealed class ModManagementView : StackPanel
         disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
         uninstall.IsEnabled = !busy && row != null;
         configure.IsEnabled = !busy && row != null;
+        startup.IsEnabled = !busy && row != null;
         detail.Text = row == null ? "选择一个 Mod 查看状态。" :
             $"{row.Name}  {row.Version}\n{row.Usage} · {StateName(state)}" +
             (native?.TryGetProperty("error", out var error) == true && error.ValueKind == JsonValueKind.String
@@ -144,6 +149,7 @@ internal sealed class ModManagementView : StackPanel
     {
         var selected = Selected?.Hash;
         var packages = await service.RequestAsync("mods-package-list");
+        startupSelections = (await service.RequestAsync("mods-profile-read")).GetProperty("selections").Clone();
         runtimeMods.Clear();
         if (gameConnected) {
             var state = await service.RequestAsync("mods-list");
@@ -157,7 +163,9 @@ internal sealed class ModManagementView : StackPanel
                 .Select(x => x.GetString() == "desktop" ? "客户端使用" : "CLI 使用"));
             var row = new Row(manifest.GetProperty("id").GetString()!, item.GetProperty("sha256").GetString()!,
                 manifest.GetProperty("name").GetString()!, manifest.GetProperty("version").GetString()!, usage);
-            var entry = new ListViewItem { Content = $"{row.Name}  {row.Version} — {StateName(Runtime(row)?.GetProperty("state").GetString())}", Tag = row };
+            var startupText = startupSelections.TryGetProperty(row.Id, out var saved) && saved.GetProperty("sha256").GetString() == row.Hash
+                ? (saved.GetProperty("enabled").GetBoolean() ? " · 下次连接启用" : " · 下次连接载入") : "";
+            var entry = new ListViewItem { Content = $"{row.Name}  {row.Version} — {StateName(Runtime(row)?.GetProperty("state").GetString())}{startupText}", Tag = row };
             list.Items.Add(entry);
             if (row.Hash == selected) list.SelectedItem = entry;
         }
@@ -184,6 +192,50 @@ internal sealed class ModManagementView : StackPanel
     {
         list.SelectedItem = list.Items.Cast<ListViewItem>().Single(x => ((Row)x.Tag).Id == id);
     }
+    internal Task StartupAsync() => RunAsync(async service => {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        var profile = await service.RequestAsync("mods-profile-read");
+        var selections = profile.GetProperty("selections").EnumerateObject()
+            .ToDictionary(item => item.Name, item => item.Value.Clone());
+        var selected = selections.TryGetValue(row.Id, out var saved) && saved.GetProperty("sha256").GetString() == row.Hash;
+        var toggle = new ToggleSwitch { Header = "连接游戏时启用此版本",
+            IsOn = selected && saved.GetProperty("enabled").GetBoolean() };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, "startup-enabled");
+        var message = new InfoBar { IsOpen = false, IsClosable = false, Severity = InfoBarSeverity.Error };
+        var body = new StackPanel { Spacing = 16 };
+        body.Children.Add(new TextBlock { Text = $"所选版本：{row.Version}\n保存后在下次连接时生效。旧版本和配置会保留，可再次选择以回退。关闭开关时仅载入，不执行 Mod。", TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(toggle); body.Children.Add(message);
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = row.Name + " · 启动设置",
+            PrimaryButtonText = "保存选择", SecondaryButtonText = selected ? "移除启动选择" : "",
+            CloseButtonText = "取消", DefaultButton = ContentDialogButton.Primary, Content = body };
+        async Task<bool> SaveAsync(bool remove) {
+            try {
+                var updated = new Dictionary<string, JsonElement>(selections);
+                if (remove) updated.Remove(row.Id);
+                else updated[row.Id] = JsonSerializer.SerializeToElement(new { sha256 = row.Hash, enabled = toggle.IsOn });
+                await service.RequestAsync("mods-profile-write", new { revision = profile.GetProperty("revision").GetString(), selections = updated });
+                await PopulateAsync(service);
+                status.Title = "启动设置已保存"; status.Message = "下次连接游戏时使用新选择；当前会话未改变。";
+                status.Severity = InfoBarSeverity.Success;
+                return true;
+            } catch (Exception e) {
+                message.Title = "未保存"; message.Message = e.Message.Contains("in use")
+                    ? "所选版本仍被运行时占用。请先断开游戏连接，再保存。"
+                    : e.Message.Contains("profile changed") ? "启动设置已被另一入口修改，请取消并重新打开。" : e.Message.Split('\n')[0];
+                message.IsOpen = true; return false;
+            }
+        }
+        dialog.PrimaryButtonClick += async (_, args) => {
+            var deferral = args.GetDeferral();
+            try { args.Cancel = !await SaveAsync(false); } finally { deferral.Complete(); }
+        };
+        dialog.SecondaryButtonClick += async (_, args) => {
+            var deferral = args.GetDeferral();
+            try { args.Cancel = !await SaveAsync(true); } finally { deferral.Complete(); }
+        };
+        await dialog.ShowAsync();
+        return true;
+    });
     internal Task ConfigureAsync() => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
         var record = await service.RequestAsync("mods-config-read", new { sha256 = row.Hash });
