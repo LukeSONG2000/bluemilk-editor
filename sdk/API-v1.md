@@ -38,11 +38,10 @@ These are supported API checks, **not security permissions or a sandbox**.
 Trusted in-process JavaScript can access the process directly. SHA-256 identifies
 content and does not authenticate a publisher.
 
-General battle events, data querying, command registration, configuration and
-generic hook/UI ownership APIs are not yet provided. The information package's
-`battle.information.read` declaration describes intended scope; it does not yet
-expose a public data-query method. Existing private protocol snapshots remain
-available separately. This first interface is not the complete planned SDK.
+Packages can now expose a lifecycle handle's `command(name, payload)` and read
+configuration snapshots (see below). The experimental battle query API below
+reuses the existing original runtime reader. General battle events and generic
+hook/UI ownership APIs remain unfinished; this is not the complete planned SDK.
 
 Actual game-process acceptance so far covers two package enable/disable cycles
 at the Home screen. The WinUI Mod page now exposes inspection, installation, loading
@@ -301,3 +300,43 @@ with the cleanup receipt; this is a lifecycle state, not a synthetic live game
 snapshot. Explicit stop releases the remaining script/session. A later explicit
 start is allowed after that confirmation. The request ledger prevents a repeated
 request ID in the same server instance from dispatching start twice.
+
+
+## On-demand battle queries (experimental)
+
+`sdk.battle.snapshot({detailScope: "selected"})` requires capability
+`battle.information.read`. Call it only from this activation's `command` handler
+and await its Promise. `detailScope` is `selected` (default) or `all`; unknown
+options are rejected. `all` requests expensive attributes/status detail for all
+observed units; it does not change targeting or combat rules.
+
+The implementation delegates to `readRuntimeSnapshot` on the original main
+thread, returning a JSON copy with `schemaVersion`, `state`, `units` and the
+existing reader's battle fields. Outside BattleGameState it returns only state,
+empty units and observation scope, omitting menu/inventory data. A transition or
+unready view can yield empty units or `battleReady:false`; never infer dead
+units or a completed battle from an empty list. Session keys are opaque,
+ephemeral strings, not stable unit IDs or SDK native handles.
+
+No polling or hooks are installed by this API. At most 16 reads are accepted per
+command. Queries from factories, background work after command return, stopped
+Mods and saved references from a previous activation are rejected. Already
+accepted queries drain before the command releases lifecycle ownership, even
+if the package forgets to await or throws. A hung reader retains ownership;
+shutdown does not force an unsafe unload. These are correctness checks for
+trusted code, not a security sandbox.
+
+Example: `examples/battle-reader`. Pack and install it through the normal Mod
+store, connect, register its returned SHA-256, then enable its ID. The shared
+protocol command is:
+
+```json
+{"id":"read-1","operation":"mods-command","payload":{"id":"org.example.battle-reader","command":"snapshot","payload":{"detailScope":"selected"}}}
+```
+
+Node acceptance: `node tests/battle_reader.mjs`. Native acceptance remains
+pending: an early trial teardown during the first SDK query test failed to
+confirm restoration. That run is not a successful SDK or cleanup verification;
+no cross-mode or performance claim is made. Ordinary prepared-session protocol
+still restricts third-party command registration; the example currently targets
+the normal shared session.

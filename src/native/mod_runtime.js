@@ -1,7 +1,7 @@
 'use strict';
 // Shared lifecycle contract. In-process modules are trusted code, not a sandbox.
 globalThis.BlueMilkMods=(()=>{
- const records=new Map();let busy=false,closing=false;const idleWaiters=[];
+ const records=new Map();let busy=false,closing=false,invocation=null;const idleWaiters=[];
  function release(){busy=false;for(const resolve of idleWaiters.splice(0))resolve();}
  const validId=x=>typeof x==='string'&&x.length<=128&&/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(x);
  const validVersion=x=>typeof x==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(x)&&x.split('.').every(n=>Number.isSafeInteger(Number(n)));
@@ -57,11 +57,31 @@ globalThis.BlueMilkMods=(()=>{
    // Capability declarations describe supported APIs, not a security boundary.
    // Retain an SDK-owned handle even if the package throws after installation.
    let owned=null,creating=true;
+   const activation={};records.get(manifest.id).activation=activation;
+   function snapshot(options={}){
+    if(!manifest.capabilities.includes('battle.information.read'))throw Error('Missing capability: battle.information.read');
+    const call=invocation;
+    if(!call||!call.accepting||call.record!==records.get(manifest.id)||call.activation!==activation)
+     throw Error('Battle queries require this enabled Mod command invocation');
+    if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>k!=='detailScope')||
+       !['selected','all'].includes(options.detailScope??'selected'))throw Error('Invalid battle snapshot options');
+    if(call.reads.length>=16)throw Error('Battle snapshot limit is 16 reads per command');
+    if(typeof readRuntimeSnapshot!=='function')throw Error('Original snapshot provider unavailable');
+    const detailScope=options.detailScope??'selected';
+    const pending=Promise.resolve().then(()=>readRuntimeSnapshot({detailScope})).then(value=>{
+     // Opaque session keys are JSON strings, never native object handles. Do not
+     // expose unrelated inventory/menu data through a battle-only capability.
+     const result=value.state==='BattleGameState'?value:{schemaVersion:value.schemaVersion,state:value.state,units:[],scope:value.scope};
+     return JSON.parse(JSON.stringify(result));
+    });
+    call.reads.push(pending.catch(()=>{}));
+    return pending;
+   }
    const sdk=Object.freeze({
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
-    battle:Object.freeze({trial:Object.freeze({
+    battle:Object.freeze({snapshot,trial:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire trial ownership during the Mod factory call');
       if(!manifest.capabilities.includes('battle.trial'))throw Error('Missing capability: battle.trial');
@@ -181,7 +201,14 @@ globalThis.BlueMilkMods=(()=>{
   if(typeof name!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(name)||!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid Mod command');
   if(typeof r.instance?.command!=='function')throw Error('Mod does not expose commands');
   busy=true;
-  try{return await r.instance.command(name,payload);}finally{release();}
+  const call={record:r,activation:r.activation,accepting:true,reads:[]};invocation=call;
+  try{return await r.instance.command(name,payload);}
+  finally{
+   // A package may accidentally omit await. Its queued native reads still own
+   // the session until settled; disabling/unloading cannot race those reads.
+   call.accepting=false;
+   try{if(call.reads.length)await Promise.all(call.reads);}finally{invocation=null;release();}
+  }
  }
  async function unregisterPackage(id,sha256){
   if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');

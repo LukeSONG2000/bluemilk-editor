@@ -91,15 +91,20 @@ class PreparedTrial:
             self.messages.append(message)
             payload = message.get('payload', {})
             expected = 'visual-probe-complete' if self.manifest['mode'] == 'visual' else 'simulation-probe-complete'
-            if message.get('type') == 'send' and payload.get('kind') == expected:
+            completed = message.get('type') == 'send' and payload.get('kind') == expected
+            if completed:
                 self.complete = payload
-                self.done.set()
             if message.get('type') == 'error':
                 self.errors.append(message.get('description', 'Native script error'))
             try:
                 self.persist()
             except Exception as error:
                 self.errors.append('Evidence persistence failed: ' + str(error))
+            finally:
+                # The waiting owner may exit immediately after this signal.
+                # Persist the final receipt first, including failed cleanup.
+                if completed:
+                    self.done.set()
 
     def start(self, pid):
         if self.started:
