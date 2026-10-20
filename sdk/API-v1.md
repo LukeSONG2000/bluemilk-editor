@@ -137,3 +137,36 @@ The marker records the Mod ID and removed hash; startup selections are stored se
 旧包和旧版配置保留，可按同样流程选回；新包不自动继承旧配置。
 选中的版本不能卸载，必须先移除启动选择。WinUI“启动设置”使用同一协议。
 这不是远程更新源、自动升级或自动回滚；已有包安装操作仍不会自动选择或执行新版本。
+
+## Mod 命令与战斗控制
+
+句柄可选实现 `command(name, payload)`；`mods-command` 要求 Mod 已启用，且与启停操作
+共用互斥。命令名称为小写字母开头的字母/数字/连字符，最长 64 字符，payload 为对象。
+处理器自行校验具体命令和字段。结果异常或超时不自动重试，不代表游戏结算成功。
+
+```json
+{"id":"control","operation":"mods-command","payload":{"id":"bluemilk.battle-control","command":"arm","payload":{"scope":"all","combatType":0,"enabled":true,"oneClickTaunt":true,"allowedTargets":[]}}}
+```
+
+`sdk.battle.control.install()` 仅在同步工厂调用中可用，要求 `battle.control` 能力，返回
+应直接交还加载器的生命周期/命令句柄。启用仅取得独占控制权，不安装战斗钩子，
+不导航、进入战斗或自动启用下一场。每场仍须显式调用 `arm`。
+
+| 命令 | 作用 |
+| --- | --- |
+| `arm` | 沿用原单场门控，指定 arena 或 all 范围，小队/舰队类型及策略/手动模式 |
+| `configure` | 修改本场策略；保留原合法目标、令牌和模式校验 |
+| `disarm` | 恢复本场控制，Mod 本身继续启用 |
+| `status` | 读取当前控制器状态，payload 必须为空对象 |
+| `enemy-input` | payload 为 `{operation, request}`，原始回合 token 与候选检查保持不变 |
+
+旧 `arm/configure/disarm/enemy-*` 入口转发至相同句柄。显式调用旧 `arm` 时，若没有
+控制拥有者，会先启用已注册的 `bluemilk.battle-control` 包；不会重新安装已卸载的包。
+`enemy-status` 和普通快照仍可在未启用时读取，不增加游戏操作。
+停用 Mod 会恢复单场控制并释放独占权；恢复失败则保留句柄和失败状态，必须先解决清理。
+支持的 SDK 安装路径和启动配置拒绝两个启用的 `battle.control` 拥有者。
+这不是安全隔离：第三方可信进程内代码仍可绕过声明直接访问原生 API。
+
+官方包见 `mods/battle-control`。迁移后的真实酒馆挂起/撤销及组合 Mod 生命周期已验收；
+`scope:all` 仅代表选择范围，不代表旅程、GAC、TB、TW 等模式已经完整实战验收。
+这些模式及迁移后的战斗内手动操作、长战斗性能仍列为待验收。

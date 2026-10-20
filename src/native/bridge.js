@@ -54,7 +54,7 @@ rpc.exports={
    if(R.fullName(R.classOf(state))==='BattleGameState')throw Error('请在进入战斗前启用下一场控制');
    if(![0,1].includes(request.combatType))throw Error('请选择下一场的小队或舰队类型');
    desktopArena?.stop();
-   desktopArena=installLiveBattleControl({battleType:'all',combatType:request.combatType,manualUI:request.manualUI===true},request);
+   desktopArena=installLiveBattleControl({battleType:'all',combatType:request.combatType,manualUI:request.manualUI===true,own:handle=>{desktopArena=handle;}},request);
    return desktopArena.snapshot();
   }
   if(request?.scope!==undefined&&request.scope!=='arena')throw Error('未知控制范围');
@@ -64,7 +64,7 @@ rpc.exports={
   const saved=R.readRef(controller,'_savedTransitionData');
   if(saved.isNull())throw Error('阵容页面仍在加载，请稍候再启用');
   const type=R.readValue(saved,'<CombatType>k__BackingField','u8');
-  desktopArena=installLiveArenaTaunt(type,request,{manualUI:request.manualUI===true});return desktopArena.snapshot();
+  desktopArena=installLiveArenaTaunt(type,request,{manualUI:request.manualUI===true,own:handle=>{desktopArena=handle;}});return desktopArena.snapshot();
  });},
  configure(request){return RuntimeApi.runOnMainThreadOnce(()=>{
   if(!desktopArena)throw Error('请先启用本场控制');
@@ -73,12 +73,53 @@ rpc.exports={
  });},
  disarm(){return RuntimeApi.runOnMainThreadOnce(()=>{if(desktopArena)desktopArena.stop();return arenaSnapshot();});},
  async shutdown(){
-  await RuntimeApi.runOnMainThreadOnce(()=>{if(desktopArena)desktopArena.stop();});
   if(globalThis.BlueMilkMods)await BlueMilkMods.shutdown();
   else if(globalThis.stopBattleInfo){
    const result=await stopBattleInfo();
    if(result.lifecycle==='cleanup-failed')throw Error('Information UI cleanup failed');
   }
+  await RuntimeApi.runOnMainThreadOnce(()=>{if(desktopArena)desktopArena.stop();});
   return {stopped:true};
  }
+};
+
+// SDK adapter owns the existing one-match controller; enabling adds no hooks.
+const originalControl={arm:rpc.exports.arm,configure:rpc.exports.configure,
+ disarm:rpc.exports.disarm,status:rpc.exports.enemystatus,input:rpc.exports.enemyinput};
+let controlOwner=null;
+globalThis.installBattleControlMod=modId=>{
+ if(controlOwner)throw Error('Another Mod owns battle control');
+ let lifecycle='enabled';
+ const handle={modId,ready:Promise.resolve(),
+  status:()=>({lifecycle,armed:desktopArena?.status().armed===true}),
+  async stop(){
+   if(lifecycle==='stopped')return {lifecycle};
+   lifecycle='stopping';
+   try{
+    await originalControl.disarm();
+    desktopArena=null;controlOwner=null;lifecycle='stopped';return {lifecycle};
+   }catch(error){lifecycle='cleanup-failed';throw error;}
+  },
+  async command(name,payload){
+   if(controlOwner!==handle||lifecycle!=='enabled')throw Error('Battle control owner is not enabled');
+   if(name==='enemy-input'){
+    if(Object.keys(payload).sort().join(',')!=='operation,request')throw Error('Enemy input requires operation and request');
+    return originalControl.input(payload.operation,payload.request);
+   }
+   if(!['arm','configure','disarm','status'].includes(name))throw Error('Unknown battle control command');
+   if(['disarm','status'].includes(name)&&Object.keys(payload).length)throw Error('This command takes no payload');
+   return originalControl[name](payload);
+  }
+ };
+ controlOwner=handle;return handle;
+};
+rpc.exports={...rpc.exports,
+ async arm(request){
+  // Existing explicit arm entry points still work through the packaged Mod.
+  if(!controlOwner)await BlueMilkMods.command('enable',{id:'bluemilk.battle-control'});
+  return BlueMilkMods.invoke(controlOwner.modId,'arm',request);
+ },
+ configure:request=>BlueMilkMods.invoke(controlOwner?.modId,'configure',request),
+ disarm:()=>controlOwner?BlueMilkMods.invoke(controlOwner.modId,'disarm',{}):originalControl.disarm(),
+ enemyinput:(operation,request)=>BlueMilkMods.invoke(controlOwner?.modId,'enemy-input',{operation,request})
 };

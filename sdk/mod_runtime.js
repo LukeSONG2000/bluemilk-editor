@@ -60,7 +60,17 @@ globalThis.BlueMilkMods=(()=>{
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
-    battle:Object.freeze({information:Object.freeze({
+    battle:Object.freeze({control:Object.freeze({
+     install(){
+      if(!creating)throw Error('Acquire battle control during the Mod factory call');
+      if(!manifest.capabilities.includes('battle.control'))throw Error('Missing capability: battle.control');
+      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
+      if(typeof installBattleControlMod!=='function')throw Error('Battle control provider unavailable');
+      owned=installBattleControlMod(manifest.id);
+      records.get(manifest.id).instance=owned;
+      return owned;
+     }
+    }),information:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire information UI during the Mod factory call');
       if(!manifest.capabilities.includes('battle.information.ui'))throw Error('Missing capability: battle.information.ui');
@@ -74,7 +84,7 @@ globalThis.BlueMilkMods=(()=>{
    });
    try{
     const handle=module.exports(sdk);
-    if(owned&&handle!==owned)throw Error('Return the acquired information lifecycle handle');
+    if(owned&&handle!==owned)throw Error('Return the acquired lifecycle handle');
     return handle;
    }finally{creating=false;}
   });
@@ -118,6 +128,8 @@ globalThis.BlueMilkMods=(()=>{
    }
    for(const other of records.values())if(other.state!=='disabled'&&
     (r.manifest.conflicts.includes(other.manifest.id)||other.manifest.conflicts.includes(r.manifest.id)))throw Error('Conflicting Mod: '+other.manifest.id);
+   if(r.manifest.capabilities.includes('battle.control')&&[...records.values()].some(other=>other!==r&&other.state!=='disabled'&&other.manifest.capabilities.includes('battle.control')))
+    throw Error('Another Mod owns the exclusive battle.control capability');
    r.state='enabling';r.error=null;
    try{
     r.instance=r.factory();
@@ -146,6 +158,15 @@ globalThis.BlueMilkMods=(()=>{
    return {stopped:true};
   }finally{busy=false;}
  }
+ async function invoke(id,name,payload={}){
+  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  const r=records.get(id);
+  if(!r||r.state!=='enabled')throw Error('Mod must be enabled before invoking commands');
+  if(typeof name!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(name)||!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid Mod command');
+  if(typeof r.instance?.command!=='function')throw Error('Mod does not expose commands');
+  busy=true;
+  try{return await r.instance.command(name,payload);}finally{busy=false;}
+ }
  async function unregisterPackage(id,sha256){
   if(busy)throw Error('Another Mod lifecycle operation is in progress');
   if(!validId(id)||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256))throw Error('Package identity required');
@@ -161,8 +182,9 @@ globalThis.BlueMilkMods=(()=>{
    return {unregistered:true,alreadyAbsent:false};
   }finally{busy=false;}
  }
- return {register,registerPackage,command,shutdown,unregisterPackage};
+ return {register,registerPackage,command,invoke,shutdown,unregisterPackage};
 })();
 rpc.exports={...rpc.exports,modcommand:(op,payload)=>BlueMilkMods.command(op,payload),
  modregisterpackage:(manifest,source,sha256,configuration)=>BlueMilkMods.registerPackage(manifest,source,sha256,configuration),
+ modinvoke:(id,name,payload)=>BlueMilkMods.invoke(id,name,payload),
  modunregisterpackage:(id,sha256)=>BlueMilkMods.unregisterPackage(id,sha256)};

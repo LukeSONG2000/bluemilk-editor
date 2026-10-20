@@ -49,6 +49,10 @@ def _resolve(root, selections):
             raise ValueError('Selected package ID mismatch: ' + identity)
         packages[identity] = payload
     visiting, ordered = set(), []
+    controllers = [identity for identity, payload in packages.items()
+                   if selections[identity]['enabled'] and 'battle.control' in payload[0]['capabilities']]
+    if len(controllers) > 1:
+        raise ValueError('Conflicting startup Mods own exclusive battle.control capability')
     def visit(identity):
         if identity in visiting:
             raise ValueError('Cyclic startup Mod dependencies')

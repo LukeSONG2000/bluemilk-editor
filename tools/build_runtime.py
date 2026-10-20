@@ -61,11 +61,12 @@ def prepare(names_path, schema_path):
     # Build through the same public package format used by third-party authors.
     (ROOT / "logs").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=ROOT / "logs") as temporary:
-        package = Path(temporary) / "information.bluemilk"
-        pack(ROOT / "mods/information", package)
-        inspect_package(package)
-        shutil.copyfile(package, assets / "information.bluemilk")
-    manifest(assets, modules + ["names.json", "information.bluemilk"])
+        for name in ("information", "battle-control"):
+            package = Path(temporary) / (name + ".bluemilk")
+            pack(ROOT / "mods" / name, package)
+            inspect_package(package)
+            shutil.copyfile(package, assets / package.name)
+    manifest(assets, modules + ["names.json", "information.bluemilk", "battle-control.bluemilk"])
     manifest(trial, TRIAL + ["schema.json"])
     client_data = ROOT / "src/assets"
     client_data.mkdir(exist_ok=True)

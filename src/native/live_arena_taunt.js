@@ -13,7 +13,7 @@ globalThis.installLiveArenaTaunt=(expectedCombatType=0,initialPolicy={enabled:fa
  const address=R.findMethod(R.findClass('BattleInputProvider'),'DoMove',2).readPointer();
  const original=new NativeFunction(address,'void',['pointer','pointer','pointer','pointer']);
  const status={battleType:expectedBattleType,manualUI:scopeOptions.manualUI===true,combatType:expectedCombatType,armed:true,entered:false,finished:false,errors:[],playerOriginalInputs:0};
- let entered=null,data=null,gate=null,ownership=null,timer=null,busy=false,stopped=false,lastCount=-1,attempted=false;
+ let entered=null,data=null,gate=null,ownership=null,timer=null,busy=false,stopped=false,stopping=false,lastCount=-1,attempted=false;
  function validatePolicy(request){
   if(typeof request?.enabled!=='boolean'||typeof request?.oneClickTaunt!=='boolean'||!Array.isArray(request.allowedTargets)||request.allowedTargets.length>16||request.allowedTargets.some(id=>typeof id!=='string'||!id||id.length>256)||new Set(request.allowedTargets).size!==request.allowedTargets.length)throw Error('Invalid enemy policy');
   if(request.enabled&&!request.oneClickTaunt&&!request.allowedTargets.length)throw Error('Select at least one permitted target');
@@ -25,12 +25,14 @@ globalThis.installLiveArenaTaunt=(expectedCombatType=0,initialPolicy={enabled:fa
  const report=kind=>{const all=gate?.events||[];const events=kind==='live-taunt-progress'?all.slice(reportedEvents):all.slice(-512);reportedEvents=all.length;send({kind,...status,policy:gate?.snapshot().policy,eventCount:all.length,events,gateErrors:gate?.errors||[]});};
  function stop(){
   if(stopped)return;
+  stopping=true;
+  if(timer){clearInterval(timer);timer=null;}
   if(gate){const pending=gate.snapshot();if(pending.pending&&ownership&&!ownership.exited&&current().equals(entered))gate.resume(pending.token);gate.stop();}else Interceptor.revert(address);
-  stopped=true;status.armed=false;if(timer)clearInterval(timer);
-  for(const h of hooks)h.detach();Interceptor.flush();report('live-taunt-stopped');
+  while(hooks.length){hooks[hooks.length-1].detach();hooks.pop();}
+  Interceptor.flush();stopped=true;status.armed=false;report('live-taunt-stopped');
  }
  const bootstrap=new NativeCallback((provider,unit,callback,info)=>{
-  if(stopped||!entered||!current().equals(entered))return original(provider,unit,callback,info);
+  if(stopping||stopped||!entered||!current().equals(entered))return original(provider,unit,callback,info);
   let handedOff=false;
   try{
    const context=R.readRef(R.readRef(entered,'_battleController'),'_battleContext');
@@ -43,9 +45,9 @@ globalThis.installLiveArenaTaunt=(expectedCombatType=0,initialPolicy={enabled:fa
    handedOff=true;gate.handleInput(provider,unit,callback,info);gate.tickPolicy();
    report('live-taunt-active');
    timer=setInterval(()=>{
-    if(busy||stopped)return;busy=true;
+    if(busy||stopping||stopped)return;busy=true;
     R.runOnMainThreadOnce(()=>{
-     if(stopped)return;
+     if(stopping||stopped)return;
      if(!current().equals(entered))return;
      gate.tickPolicy();
      if(gate.events.length!==lastCount){lastCount=gate.events.length;report('live-taunt-progress');}
@@ -57,9 +59,27 @@ globalThis.installLiveArenaTaunt=(expectedCombatType=0,initialPolicy={enabled:fa
    if(!handedOff)original(provider,unit,callback,info);
   }
  },'void',['pointer','pointer','pointer','pointer']);
+ const api={status:()=>status,stop,
+  input(operation,request){
+   if(!gate||stopping||stopped)throw Error('No owned enemy input');
+   const actions={ability:()=>gate.chooseAbility(request),basic:()=>gate.chooseBasic(request.token),target:()=>gate.selectTarget(request),unit:()=>gate.selectUnit(request),cancel:()=>gate.cancelSelection(request.token),resume:()=>gate.resume(request.token),button:()=>gate.clickUI(request),tap:()=>gate.tapUI(request)};
+   if(!Object.hasOwn(actions,operation))throw Error('Unknown enemy operation');
+   return actions[operation]();
+  },
+  snapshot:()=>({status:{...status},input:gate&&!stopped?gate.snapshot():{pending:false,policy:{available:false,combatType:expectedCombatType,...desired}}}),
+  configure(request){
+   if(stopping||stopped)throw Error('Arena controller finished; arm another match from prebattle');
+   const next=validatePolicy(request);
+   if(gate){gate.configurePolicy({...next,token:gate.snapshot().policy.token});desired=next;gate.tickPolicy();}
+   else desired=next;
+   return this.snapshot();
+  }
+ };
+ // Retain a cleanup handle before the first hook, including installation failures.
+ scopeOptions.own?.(api);
  try{
   hooks.push(Interceptor.attach(R.findMethod(R.findClass('BattleGameState'),'SC_Enter',2).readPointer(),{onEnter(args){
-   if(stopped||attempted)return;attempted=true;
+   if(stopping||stopped||attempted)return;attempted=true;
    try{
     if(R.fullName(R.classOf(args[1]))!=='BattleGameState+TransitionData')throw Error('Unknown original battle transition');
     const actualType=R.readValue(args[1],'<BattleTypeEnum>k__BackingField','u8');
@@ -73,22 +93,7 @@ globalThis.installLiveArenaTaunt=(expectedCombatType=0,initialPolicy={enabled:fa
   }}));
   Interceptor.replace(address,bootstrap);Interceptor.flush();report('live-taunt-armed');
  }catch(e){stop();throw e;}
- return {status:()=>status,stop,
-  input(operation,request){
-   if(!gate||stopped)throw Error('No owned enemy input');
-   const actions={ability:()=>gate.chooseAbility(request),basic:()=>gate.chooseBasic(request.token),target:()=>gate.selectTarget(request),unit:()=>gate.selectUnit(request),cancel:()=>gate.cancelSelection(request.token),resume:()=>gate.resume(request.token),button:()=>gate.clickUI(request),tap:()=>gate.tapUI(request)};
-   if(!Object.hasOwn(actions,operation))throw Error('Unknown enemy operation');
-   return actions[operation]();
-  },
-  snapshot:()=>({status:{...status},input:gate&&!stopped?gate.snapshot():{pending:false,policy:{available:false,combatType:expectedCombatType,...desired}}}),
-  configure(request){
-   if(stopped)throw Error('Arena controller finished; arm another match from prebattle');
-   const next=validatePolicy(request);
-   if(gate){gate.configurePolicy({...next,token:gate.snapshot().policy.token});desired=next;gate.tickPolicy();}
-   else desired=next;
-   return this.snapshot();
-  }
- };
+ return api;
 };
 
 // Explicitly scoped next battle; does not navigate, enter or submit that battle.

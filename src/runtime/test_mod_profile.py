@@ -117,3 +117,10 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError): acquire()
             self.assertEqual(read()['revision'], saved['revision'])
             self.assertEqual(write(saved['revision'], {})['selections'], {})
+
+    def test_two_control_owners_rejected_before_startup(self):
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            a = self.package('org.example.a', capabilities=['battle.control'])
+            b = self.package('org.example.b', capabilities=['battle.control'])
+            with self.assertRaisesRegex(ValueError, 'exclusive battle.control'):
+                write(read()['revision'], {'org.example.a': a, 'org.example.b': b})

@@ -21,7 +21,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
                     'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
-                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write'})
+                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-command'})
 
 
 class ProtocolSession:
@@ -64,6 +64,14 @@ class ProtocolSession:
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
+            elif operation == 'mods-command':
+                if runtime is not native_runtime:
+                    raise ValueError('Mod commands require the normal runtime')
+                if (not payload or set(payload) != {'id', 'command', 'payload'}
+                        or not isinstance(payload['id'], str) or not isinstance(payload['command'], str)
+                        or not isinstance(payload['payload'], dict)):
+                    raise ValueError('Mod command requires id, command and object payload')
+                result = runtime.call_args('modinvoke', payload['id'], payload['command'], payload['payload'])
             elif operation in ('mods-profile-read', 'mods-profile-write'):
                 from mod_profile import read, write
                 if operation == 'mods-profile-read':

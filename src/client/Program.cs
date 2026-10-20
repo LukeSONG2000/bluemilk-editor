@@ -217,6 +217,7 @@ public sealed partial class ShellApplication : Application
     private async Task SmokeModsAsync(ConnectionView connection, ModManagementView mods)
     {
         var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
+        var modId = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_MOD_ID") ?? "bluemilk.information";
         try {
             var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
                 ?? throw new InvalidOperationException("Explicit Mod package required.");
@@ -227,7 +228,7 @@ public sealed partial class ShellApplication : Application
             if (state.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
                 throw new InvalidOperationException("Home screen required for lifecycle smoke.");
             await mods.RefreshAsync();
-            mods.SelectMod("bluemilk.information");
+            mods.SelectMod(modId);
             await mods.ChangeAsync("mods-enable");
             if (output != null) await File.WriteAllTextAsync(output + ".enabled", "{\"enabled\":true}");
             await Task.Delay(16000);
@@ -239,7 +240,7 @@ public sealed partial class ShellApplication : Application
                 if (output != null) await File.WriteAllTextAsync(output + ".uninstalled", "{\"uninstalled\":true}");
                 await Task.Delay(8000);
                 await mods.InstallAsync();
-                mods.SelectMod("bluemilk.information");
+                mods.SelectMod(modId);
                 await mods.ChangeAsync("mods-package-register");
                 if (output != null) await File.WriteAllTextAsync(output + ".restored", "{\"restored\":true}");
                 await Task.Delay(8000);

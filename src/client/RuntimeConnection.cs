@@ -72,7 +72,7 @@ internal sealed class RuntimeConnection
                 or "capture-start" or "capture-status" or "capture-stop" or "mods-list" or "mods-enable" or "mods-disable"
                 or "mods-package-inspect" or "mods-package-install" or "mods-package-list" or "mods-package-register"
                 or "mods-package-uninstall" or "mods-config-read" or "mods-config-write"
-                or "mods-profile-read" or "mods-profile-write"))
+                or "mods-profile-read" or "mods-profile-write" or "mods-command"))
                 throw new ArgumentException("此客户端阶段未开放该操作。");
             pending = ExchangeAsync(operation, payload);
             try
