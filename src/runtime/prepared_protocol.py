@@ -12,6 +12,7 @@ class PreparedService:
     def __init__(self):
         self.trial = None
         self.start_attempted = False
+        self.release_package = None
 
     def start(self, payload):
         if self.start_attempted:
@@ -32,6 +33,8 @@ class PreparedService:
                 raise RuntimeError('Return to the tavern before starting a private trial')
         finally:
             probe.disconnect()
+        from trial_store import acquire
+        self.release_package = acquire(manifest)
         self.trial = PreparedTrial(manifest, source, DATA/'trials'/('trial-'+uuid.uuid4().hex+'.json'), frida.attach, acquire_session)
         game = find_game()
         self.trial.start(game['pid'])
@@ -57,16 +60,25 @@ class PreparedService:
     def status(self):
         return self.trial.status() if self.trial else {'started': False}
 
+    def _release_package(self):
+        if self.release_package is not None:
+            self.release_package()
+            self.release_package = None
+
     def disconnect(self):
         if self.trial is None or self.trial.detached:
+            self._release_package()
             return {'disconnected': True}
         if self.trial.script is None:
             self.trial.close()
+            self._release_package()
             return {'disconnected': True}
         self.trial.stop()
         if not self.trial.done.wait(20):
             raise TimeoutError('Native cleanup pending; worker ownership retained')
         status = self.trial.close()
+        if status['detached']:
+            self._release_package()
         return dict(disconnected=status['detached'], cleanup=status['completion']['cleanup'])
 
     def retain_until_clean(self):

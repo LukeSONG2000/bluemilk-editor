@@ -247,8 +247,17 @@ New visual preparation embeds one verified byte snapshot of `trial.bluemilk` and
 records `trialPackageSha256`; captured data and the package entry are pinned by the
 prepared source hash. The prepared manifest is an explicit executable artifact;
 changing/uninstalling a package in the shared store does not rewrite older
-prepared artifacts. Re-prepare to select the newly bundled version. Store-selected
-trial versions and configuration are not yet applied to prepared artifacts.
+prepared artifacts. New shared preparation uses the store-selected `bluemilk.trial` version (even if
+normal-session auto-enable is off), falling back to bundled discovery only when
+no version is selected. Explicit uninstall suppression is respected. Its config
+values and revision are frozen in the executable artifact and supplied through
+`sdk.config.read()`. Start requires that exact package still installed and its
+configuration revision unchanged; otherwise prepare again. While owned, its
+OS lease blocks configuration edits, selection changes and uninstall. Cleanup
+failure retains the lease until confirmed disconnect. Legacy standalone
+artifacts without `managedTrialPackage` retain their explicit embedded version;
+they do not acquire a shared-store lease. Explicit control package selection is
+still separate and is not yet migrated to this managed snapshot mechanism.
 
 The original engine first stops its owned control resource without recursively
 entering the registry lock. After engine cleanup resolves, the bootstrap shuts

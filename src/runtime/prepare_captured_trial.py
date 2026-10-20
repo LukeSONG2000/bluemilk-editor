@@ -34,7 +34,7 @@ def read_mode_provenance(path, metadata, capture_info):
     return mode
 
 
-def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None, trial_package=None, trial_sha=None):
+def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None, trial_package=None, trial_sha=None, managed_trial=None):
     control_record = None
     if control is not None:
         if mode != 'visual' or enemy_control or enemy_ui or enemy_basic_demo or ai_priority_order is not None or experimental_prediction:
@@ -88,7 +88,7 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
         package_path = Path(trial_package) if trial_package else root/'trial.bluemilk'
         if trial_package is None and not package_path.exists():
             package_path = Path(__file__).resolve().parent/'assets/trial.bluemilk'
-        trial_record = read_trial_package(package_path, trial_sha)
+        trial_record = managed_trial if managed_trial is not None else read_trial_package(package_path, trial_sha)
     modules = ['runtime_api.js', 'unity_scene_api.js', 'offline_socket_guard.js',
                'original_fixture.js', 'battle_proto.js', 'isolated_inventory.js',
                'captured_battle.js', 'definition_scope.js', 'selected_squad.js', 'captured_trial.js']
@@ -146,6 +146,8 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
                 'schemaSha256': schema_digest,
                 'source': str(js.resolve()), 'sourceSha256': hashlib.sha256(source_bytes).hexdigest(),
                 'originalAssemblySha256': '12cc254525a58aedea122a2967d0476da05b98ef0c219dc18cfc0b7207538db6'}
+    if managed_trial is not None:
+        manifest['managedTrialPackage'] = {key: managed_trial[key] for key in ('sha256', 'configurationRevision')}
     if js.exists() or manifest_path.exists():
         raise FileExistsError('Use a new output prefix to preserve prior evidence')
     with js.open('xb') as target:
