@@ -62,6 +62,10 @@ public sealed partial class ShellApplication : Application
         var overview = new NavigationViewItem { Content = "概览", Icon = new SymbolIcon(Symbol.Home) };
         navigation.MenuItems.Add(overview);
         navigation.SelectedItem = overview;
+        var modsItem = new NavigationViewItem { Content = "Mod 管理" };
+        navigation.MenuItems.Add(modsItem);
+        var mods = new ModManagementView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var modsView = new ScrollViewer { Content = mods };
         var battleItem = new NavigationViewItem { Content = "战斗助手" };
         navigation.MenuItems.Add(battleItem);
         var battle = new BattleInformationView(content, () =>
@@ -89,6 +93,7 @@ public sealed partial class ShellApplication : Application
         {
             navigation.Content = ReferenceEquals(change.SelectedItem, settings) ? settingsView
                 : ReferenceEquals(change.SelectedItem, trialItem) ? trialView
+                : ReferenceEquals(change.SelectedItem, modsItem) ? modsView
                 : ReferenceEquals(change.SelectedItem, battleItem) ? battleView : overviewView;
         };
         window.Content = navigation;
@@ -112,6 +117,11 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        if (Environment.GetCommandLineArgs().Contains("--smoke-mods"))
+        {
+            navigation.SelectedItem = modsItem;
+            _ = SmokeModsAsync(content, mods);
+        }
         if (Environment.GetCommandLineArgs().Contains("--smoke-shared"))
             _ = SmokeSharedAsync(content);
         if (Environment.GetCommandLineArgs().Contains("--smoke-update"))
@@ -160,6 +170,34 @@ public sealed partial class ShellApplication : Application
             navigation.SelectedItem = settings;
             _ = SmokeCliAsync(cliSettings, testRoot);
         }
+    }
+
+    private async Task SmokeModsAsync(ConnectionView connection, ModManagementView mods)
+    {
+        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
+        try {
+            var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
+                ?? throw new InvalidOperationException("Explicit Mod package required.");
+            await mods.InspectAsync(package);
+            await mods.InstallAsync();
+            connection.InformationEnabled = false;
+            var state = await connection.ConnectAsync();
+            if (state.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
+                throw new InvalidOperationException("Home screen required for lifecycle smoke.");
+            await mods.RefreshAsync();
+            mods.SelectMod("bluemilk.information");
+            await mods.ChangeAsync("mods-enable");
+            if (output != null) await File.WriteAllTextAsync(output + ".enabled", "{\"enabled\":true}");
+            await Task.Delay(16000);
+            await mods.ChangeAsync("mods-disable");
+            if (output != null) await File.WriteAllTextAsync(output + ".disabled", "{\"disabled\":true}");
+            await Task.Delay(8000);
+            await connection.DisconnectAsync();
+            if (output != null) await File.WriteAllTextAsync(output, "{\"modLifecycle\":true,\"disconnected\":true}");
+        } catch (Exception e) {
+            try { await connection.DisconnectAsync(); } catch { }
+            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
+        } finally { window?.Close(); }
     }
 
     private async Task SmokePreparationAsync(ConnectionView connection, TrialCaptureView trial)
