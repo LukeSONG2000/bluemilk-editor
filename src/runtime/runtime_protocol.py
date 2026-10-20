@@ -16,6 +16,9 @@ INVENTORY = {'inventory-list', 'inventory-filter', 'inventory-unit', 'inventory-
 MENUS = {**{name:'inboxcommand' for name in ('inbox-open','inbox-list','inbox-select','inbox-home')},
          **{name:'objectivescommand' for name in ('objectives-open','objectives-list','objectives-daily','objectives-achievements','objectives-home','events-back')},
          **{name:'eventscommand' for name in ('events-enter','events-challenges','events-list','events-open','events-missions','events-missions-back')}}
+GAME_OPERATIONS = set(MENUS) | INVENTORY | set(PREBATTLE) | CALENDAR | {
+    'inventory-home', 'inventory-characters', 'inventory-ships',
+    'inbox-claim', 'inbox-claim-status', 'objectives-claim', 'objectives-claim-status'}
 OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE) | CALENDAR | {'connect','disconnect','capabilities',
                     'inventory-characters','inventory-ships','capture-start','capture-status','capture-stop',
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
@@ -87,6 +90,7 @@ class ProtocolSession:
                           self.trials.mods() if operation == 'mods-list' else self.trials.stop())
             elif operation == 'capabilities':
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
+                              gameOperations=sorted(GAME_OPERATIONS),
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
             elif operation == 'mods-command':
@@ -97,6 +101,21 @@ class ProtocolSession:
                         or not isinstance(payload['payload'], dict)):
                     raise ValueError('Mod command requires id, command and object payload')
                 result = runtime.call_args('modinvoke', payload['id'], payload['command'], payload['payload'])
+                if isinstance(result, dict) and 'blueMilkHostOperation' in result:
+                    if (set(result) != {'blueMilkHostOperation', 'operation', 'payload'}
+                            or type(result['blueMilkHostOperation']) is not int or result['blueMilkHostOperation'] != 1
+                            or result['operation'] not in GAME_OPERATIONS
+                            or result['operation'] != payload['command']
+                            or json.dumps(result['payload'], sort_keys=True) != json.dumps(payload['payload'], sort_keys=True)):
+                        raise ValueError('Mod handoff must preserve an explicit supported game operation and exact payload')
+                    registry = runtime.call_args('modcommand', 'list', {})
+                    matches = [m for m in registry.get('mods', []) if m.get('manifest', {}).get('id') == payload['id']]
+                    if (len(matches) != 1 or matches[0].get('state') != 'enabled'
+                            or 'game.operations' not in matches[0].get('manifest', {}).get('capabilities', [])):
+                        raise ValueError('Enabled game.operations capability required for host execution')
+                    # Same session gate, same validated legacy route and journals.
+                    # Do not call native reward callbacks directly from the Mod.
+                    return self._dispatch(json.dumps({'id': request_id, 'operation': result['operation'], 'payload': result['payload']}))
             elif operation in ('mods-profile-read', 'mods-profile-write'):
                 from mod_profile import read, write
                 if operation == 'mods-profile-read':

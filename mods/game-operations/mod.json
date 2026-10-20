@@ -1,0 +1,13 @@
+{
+  "id": "bluemilk.game-operations",
+  "name": "游戏操作",
+  "publisher": "BlueMilk project",
+  "version": "0.1.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": ["game.operations"],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}

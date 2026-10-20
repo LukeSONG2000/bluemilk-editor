@@ -132,6 +132,24 @@ globalThis.BlueMilkMods=(()=>{
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
+    game:Object.freeze({operations:Object.freeze({install(){
+     if(!creating)throw Error('Acquire game operations during the Mod factory call');
+     if(!manifest.capabilities.includes('game.operations'))throw Error('Missing capability: game.operations');
+     return acquire('game-operations',()=>{
+      let lifecycle='enabled';
+      return {ready:Promise.resolve(),status:()=>({lifecycle,execution:'shared-host'}),
+       stop(){lifecycle='stopped';return {lifecycle};},
+       command(operation,payload={}){
+        if(lifecycle!=='enabled')throw Error('Game operations Mod is not enabled');
+        if(typeof operation!=='string'||!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid game operation');
+        // This is a handoff, not an execution receipt. Only the normal host
+        // dispatcher can authorize the explicit same-operation/same-payload
+        // request through its existing validation and durable claim journals.
+        return {blueMilkHostOperation:1,operation,payload:JSON.parse(JSON.stringify(payload))};
+       }
+      };
+     });
+    }})}),
     lifecycle:Object.freeze({compose(options={}){
      if(!creating||sealed)throw Error('Compose once during the Mod factory call');
      if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>k!=='command')||
