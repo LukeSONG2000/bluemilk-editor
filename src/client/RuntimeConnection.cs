@@ -70,7 +70,8 @@ internal sealed class RuntimeConnection
             if (prepared ? operation is not ("capabilities" or "prepare" or "start" or "snapshot" or "status")
                 : operation is not ("capabilities" or "connect" or "snapshot" or "trial-connect" or "arm" or "configure" or "disarm"
                 or "capture-start" or "capture-status" or "capture-stop" or "mods-list" or "mods-enable" or "mods-disable"
-                or "mods-package-inspect" or "mods-package-install" or "mods-package-list" or "mods-package-register"))
+                or "mods-package-inspect" or "mods-package-install" or "mods-package-list" or "mods-package-register"
+                or "mods-package-uninstall"))
                 throw new ArgumentException("此客户端阶段未开放该操作。");
             pending = ExchangeAsync(operation, payload);
             try

@@ -87,3 +87,14 @@ packages.registerPackage(manifest('bad-export'),'module.exports={};','d'.repeat(
 await assert.rejects(packages.command('enable',{id:'bluemilk.bad-export'}),/factory/);
 await assert.rejects(packages.command('disable',{id:'bluemilk.bad-export'}),/cleanup cannot be confirmed/);
 console.log('PASS Mod registry: validation, dependency/conflict checks, shared presentation-neutral commands, idempotence, failed cleanup retained.');
+
+await assert.rejects(packages.unregisterPackage('bluemilk.bad-export','d'.repeat(64)),/cleanup cannot be confirmed/);
+await packages.command('enable',{id:'org.example.packaged'});
+packages.registerPackage(manifest('dependent',{id:'org.example.dependent',dependencies:['org.example.packaged']}),entry,'e'.repeat(64));
+await assert.rejects(packages.unregisterPackage('org.example.packaged','a'.repeat(64)),/dependent/);
+await assert.rejects(packages.unregisterPackage('org.example.packaged','f'.repeat(64)),/different/);
+assert.equal((await packages.unregisterPackage('org.example.dependent','e'.repeat(64))).unregistered,true);
+assert.equal((await packages.unregisterPackage('org.example.packaged','a'.repeat(64))).unregistered,true);
+assert.equal((await packages.command('list')).mods.some(x=>x.manifest.id==='org.example.packaged'),false);
+assert.equal(packages.registerPackage(packageManifest,entry,'a'.repeat(64)).state,'disabled');
+console.log('PASS package unregister: confirmed stop, dependency blocking, exact identity and cleanup-failure retention');

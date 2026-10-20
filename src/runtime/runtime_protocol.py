@@ -20,7 +20,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'inventory-characters','inventory-ships','capture-start','capture-status','capture-stop',
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
-                    'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register'})
+                    'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall'})
 
 
 class ProtocolSession:
@@ -63,13 +63,13 @@ class ProtocolSession:
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
-            elif operation == 'mods-package-register':
-                from mod_store import registration
+            elif operation in ('mods-package-register', 'mods-package-uninstall'):
                 if runtime is not native_runtime:
-                    raise ValueError('Mod registration requires the normal runtime')
+                    raise ValueError('Mod package changes require the normal runtime')
                 if not payload or set(payload) != {'sha256'}:
-                    raise ValueError('mods-package-register requires only installed sha256')
-                result = runtime.call_args('modregisterpackage', *registration(payload['sha256']))
+                    raise ValueError('Mod package change requires only installed sha256')
+                result = (runtime.register_package(payload['sha256']) if operation == 'mods-package-register'
+                          else runtime.uninstall_package(payload['sha256']))
             elif operation == 'mods-package-list':
                 from mod_store import discover
                 if payload not in (None, {}):

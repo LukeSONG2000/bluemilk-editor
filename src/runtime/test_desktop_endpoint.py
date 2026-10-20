@@ -21,6 +21,34 @@ TEST_DLL = ROOT.parent / 'client_tests/bin/Debug/net8.0/Client.Tests.dll'
 
 @unittest.skipUnless(os.name == 'nt', 'Windows DPAPI required')
 class DesktopEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_idle_csharp_connection_answers_protocol_ping_without_game_polling(self):
+        from unittest.mock import Mock
+        from websockets.asyncio.server import serve
+        from app_server import AppServer
+        from server_endpoint import EndpointOwner
+        import secrets
+        token = secrets.token_urlsafe(32)
+        runtime = Mock()
+        server = AppServer(runtime, token)
+        with tempfile.TemporaryDirectory(dir=test_paths.logs()) as directory:
+            owner = EndpointOwner(directory)
+            try:
+                async with serve(server._handle, '127.0.0.1', 0,
+                                 process_request=server._authenticate, origins=[None],
+                                 ping_interval=0.1, ping_timeout=0.3) as listener:
+                    uri = f'ws://127.0.0.1:{listener.sockets[0].getsockname()[1]}/rpc'
+                    owner.publish(uri, server.instance, token)
+                    process = await asyncio.create_subprocess_exec(
+                        'dotnet', str(TEST_DLL), '--endpoint-idle', directory,
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), 15)
+                    self.assertEqual(process.returncode, 0, stderr.decode())
+                    self.assertEqual(json.loads(stdout)['protocol'], 'jsonrpc-2.0-websocket')
+                    runtime.call.assert_not_called()
+                    self.assertEqual(len(server._responses), 1)
+            finally:
+                owner.close()
+
     async def test_python_owner_and_csharp_reader_fail_closed(self):
         self.assertTrue(TEST_DLL.exists(), 'Build Client.Tests.csproj first')
         with tempfile.TemporaryDirectory(dir=test_paths.logs()) as directory:
