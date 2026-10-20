@@ -56,7 +56,58 @@ globalThis.BlueMilkMods=(()=>{
    if(typeof module.exports!=='function')throw Error('Mod entry must export a lifecycle factory');
    // Capability declarations describe supported APIs, not a security boundary.
    // Retain an SDK-owned handle even if the package throws after installation.
-   let owned=null,creating=true;
+   let owned=null,creating=true,sealed=false,group=null;
+   const resources=[];
+   function composite(){
+    if(!group){
+     let phase='enabled',readyTask=null,stopTask=null;
+     const stopped=new Set();
+     group={
+      get ready(){
+       if(!readyTask){
+        readyTask=Promise.all(resources.map(x=>x.handle.ready));
+        readyTask.catch(()=>{});
+       }
+       return readyTask;
+      },
+      status(){
+       const children=resources.map(x=>({kind:x.kind,...x.handle.status()}));
+       return {lifecycle:phase==='enabled'&&children.some(x=>x.lifecycle!=='enabled')?'enabling':phase,resources:children};
+      },
+      stop(){
+       if(phase==='stopped')return Promise.resolve({lifecycle:phase});
+       if(stopTask)return stopTask;
+       phase='stopping';
+       stopTask=(async()=>{
+        try{
+         // Even an installer that failed readiness can own partial native work.
+         // Finish newer resources first; keep older dependencies if one fails.
+         for(let i=resources.length-1;i>=0;i--){
+          const handle=resources[i].handle;if(stopped.has(handle))continue;
+          try{await handle.ready;}catch(_){/* stop must verify partial cleanup */}
+          const result=await handle.stop();
+          if(result?.lifecycle!=='stopped')throw Error('Composite resource cleanup unconfirmed: '+resources[i].kind);
+          stopped.add(handle);
+         }
+         phase='stopped';return {lifecycle:phase};
+        }catch(error){phase='cleanup-failed';throw error;}
+        finally{stopTask=null;}
+       })();
+       return stopTask;
+      }
+     };
+    }
+    return group;
+   }
+   function acquire(kind,install){
+    if(sealed)throw Error('Acquire resources before composing the lifecycle');
+    if(resources.some(x=>x.kind===kind))throw Error('Resource already acquired: '+kind);
+    if((kind==='trial'&&resources.length)||resources.some(x=>x.kind==='trial'))throw Error('Trial engine must retain a standalone lifecycle');
+    const handle=install();resources.push({kind,handle});
+    owned=resources.length===1?handle:composite();
+    records.get(manifest.id).instance=owned;
+    return handle;
+   }
    const activation={};records.get(manifest.id).activation=activation;
    function snapshot(options={}){
     if(!manifest.capabilities.includes('battle.information.read'))throw Error('Missing capability: battle.information.read');
@@ -81,43 +132,43 @@ globalThis.BlueMilkMods=(()=>{
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
+    lifecycle:Object.freeze({compose(options={}){
+     if(!creating||sealed)throw Error('Compose once during the Mod factory call');
+     if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>k!=='command')||
+        (options.command!==undefined&&typeof options.command!=='function'))throw Error('Invalid lifecycle compose options');
+     if(resources.some(x=>x.kind==='trial'))throw Error('Trial engine must retain a standalone lifecycle');
+     sealed=true;owned=composite();
+     if(options.command)owned.command=options.command;
+     records.get(manifest.id).instance=owned;
+     return owned;
+    }}),
     battle:Object.freeze({snapshot,events:Object.freeze({
      install(options={}){
       if(!creating)throw Error('Acquire battle events during the Mod factory call');
       if(!manifest.capabilities.includes('battle.events.read'))throw Error('Missing capability: battle.events.read');
-      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
       if(typeof installBattleEventsMod!=='function')throw Error('Original battle events provider unavailable');
-      owned=installBattleEventsMod(options);records.get(manifest.id).instance=owned;return owned;
+      return acquire('events',()=>installBattleEventsMod(options));
      }
     }),trial:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire trial ownership during the Mod factory call');
       if(!manifest.capabilities.includes('battle.trial'))throw Error('Missing capability: battle.trial');
-      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
       if(typeof installOriginalTrialMod!=='function')throw Error('Original trial provider unavailable');
-      owned=installOriginalTrialMod(manifest.id);
-      records.get(manifest.id).instance=owned;
-      return owned;
+      return acquire('trial',()=>installOriginalTrialMod(manifest.id));
      }
     }),control:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire battle control during the Mod factory call');
       if(!manifest.capabilities.includes('battle.control'))throw Error('Missing capability: battle.control');
-      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
       if(typeof installBattleControlMod!=='function')throw Error('Battle control provider unavailable');
-      owned=installBattleControlMod(manifest.id);
-      records.get(manifest.id).instance=owned;
-      return owned;
+      return acquire('control',()=>installBattleControlMod(manifest.id));
      }
     }),information:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire information UI during the Mod factory call');
       if(!manifest.capabilities.includes('battle.information.ui'))throw Error('Missing capability: battle.information.ui');
-      if(owned)throw Error('Information UI already acquired by this Mod');
       if(typeof installBattleInfo!=='function')throw Error('Information UI provider unavailable');
-      owned=installBattleInfo();
-      records.get(manifest.id).instance=owned;
-      return owned;
+      return acquire('information',()=>installBattleInfo());
      }
     })})
    });
