@@ -430,6 +430,46 @@ installation. Original-client acceptance covers two enable/disable cycles with
 original basic actions and Home/guard/GC restoration in the local PVE fixture;
 visual layout, cross-mode and performance acceptance are separate.
 
+### Host-mediated game operations
+
+The project-maintained `bluemilk.game-operations` package uses
+`sdk.game.operations.install()` with capability `game.operations`. Enabling it
+does not navigate, claim or spend anything. Explicit commands use the normal
+shared `mods-command` protocol, for example:
+
+```json
+{"id":"calendar-1","operation":"mods-command","payload":{"id":"bluemilk.game-operations","command":"calendar-open","payload":{}}}
+```
+
+The SDK handle returns a **host handoff**, not a native execution receipt. The
+normal dispatcher checks that the Mod is enabled with the declared capability,
+that the operation is allowed, and that both its name and typed JSON payload
+exactly match the caller's request. It then invokes the existing validated route
+under the same session lock. Direct native `modinvoke` callers receive only the
+handoff; use the normal shared protocol for execution. Lifecycle, capture, trial,
+and recursive Mod commands cannot be forwarded through this interface.
+
+`capabilities.gameOperations` lists the current host routes: calendar, inbox and
+objective rewards/status, existing menu/event navigation, inventory inspection,
+and existing prebattle roster/support/commander selection. This preserves the
+original identity, eligibility and durable-receipt checks. Reward submission is
+reserved on disk before native dispatch; unknown outcomes remain retry-blocked
+across sessions. A dispatch receipt still does not establish settlement. Store
+purchases, sweep and battle entry routes not in that list remain pending; the
+new package does not bypass their missing acceptance or spending authorization.
+
+The legacy named host operations remain available during frontend migration;
+current feature pages are not yet all gated through this Mod. This package can
+be installed/enabled/disabled through either frontend, and invoked through CLI.
+The standard client Mod manager discovers it alongside the other bundled packages.
+
+Original-client acceptance covers calendar open/list/close, disabled-command
+rejection and re-enable at Home; no claim was requested in that test. Reward
+settlement and all other routes require their own original-client acceptance.
+`node tests/game_operations.mjs` validates the SDK lifecycle and
+`test_game_operations_mod.py` verifies host validation, rejection of parameter
+substitution and durable unknown-receipt handling.
+
 ### Trial cleanup diagnostics
 
 `trial-status.cleanupProgress` reports the latest `trial-cleanup-progress`

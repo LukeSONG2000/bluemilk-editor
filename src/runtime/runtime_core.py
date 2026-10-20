@@ -68,7 +68,7 @@ class Runtime:
             from mod_package import inspect_package
             from mod_store import install
             bundled = {}
-            for name in ('information', 'battle-control', 'trial'):
+            for name in ('information', 'battle-control', 'trial', 'game-operations'):
                 package = ASSETS / (name + '.bluemilk')
                 checked = inspect_package(package)
                 identity = 'bluemilk.' + name
