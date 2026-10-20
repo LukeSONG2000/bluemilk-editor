@@ -227,6 +227,20 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
      if(name==='CampaignGameState'&&campaignExpected&&!foreignTransition&&!ownedCampaign)ownedCampaign=state;
      const owned=!foreignTransition&&((entered&&state.equals(entered))||(ownedCampaign&&state.equals(ownedCampaign)));
      if(owned){
+      // Shutdown assumes initialized battle subsystems. A stop request while
+      // loading must not dispatch that native exit halfway through SC_Enter.
+      // Let the original FSM reach the input boundary already verified by
+      // normal trial cleanup; never synthesize initialization or advance it.
+      if(name==='BattleGameState'&&!readyAt){
+       const fsm=call(f.context,'get_BattleFsmController');
+       const previous=R.readValue(fsm,'_previousNonIdleState','i32'),next=R.readValue(fsm,'_nextState','i32');
+       if(previous!==34||next!==1){
+        if(!cleanup.waitingForBattleReady)traceCleanup('waiting-for-battle-ready',{previous,next});
+        cleanup.waitingForBattleReady=true;return;
+       }
+       readyAt=Date.now();cleanup.waitingForBattleReady=false;
+       traceCleanup('battle-ready-for-exit',{previous,next});
+      }
       // Original EnterState creates the non-null ExitState completion delegate
       // and enters Home only after the previous scene unload finishes.
       if(!returningHome){
