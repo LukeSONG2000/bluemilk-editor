@@ -54,6 +54,15 @@ internal sealed class ConnectionView : StackPanel
         status.Severity = InfoBarSeverity.Error;
     }
 
+    private static async Task<RuntimeConnection> OpenSharedAsync()
+    {
+        var endpoint = Environment.GetEnvironmentVariable("BLUEMILK_SERVER_URL");
+        if (!string.IsNullOrEmpty(endpoint))
+            return await RuntimeConnection.AttachAsync(endpoint, Environment.GetEnvironmentVariable("BLUEMILK_SERVER_TOKEN") ?? "");
+        var discovered = await ServerLauncher.EnsureAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
+        return await RuntimeConnection.AttachAsync(discovered.Uri, discovered.Token, discovered.Instance, discovered.Pid);
+    }
+
     internal async Task<JsonElement> ConnectAsync(string? trialDirectory = null, int? trialPid = null)
     {
         if (busy || runtime != null) throw new InvalidOperationException("已有连接操作，请先恢复。");
@@ -61,26 +70,20 @@ internal sealed class ConnectionView : StackPanel
         try
         {
             IsPreparedTrial = false;
-            var sharedEndpoint = trialDirectory == null ? Environment.GetEnvironmentVariable("BLUEMILK_SERVER_URL") : null;
-            var discovered = trialDirectory == null && string.IsNullOrEmpty(sharedEndpoint)
-                ? await ServerLauncher.EnsureAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"))
-                : null;
-            runtime = discovered != null
-                ? await RuntimeConnection.AttachAsync(discovered.Uri, discovered.Token, discovered.Instance, discovered.Pid)
-                : string.IsNullOrEmpty(sharedEndpoint)
-                ? RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"))
-                : await RuntimeConnection.AttachAsync(sharedEndpoint, Environment.GetEnvironmentVariable("BLUEMILK_SERVER_TOKEN") ?? "");
+            runtime = trialDirectory == null ? await OpenSharedAsync()
+                : RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
+            IsPreparedTrial = runtime.SharedSessionMode == "prepared";
             Buttons();
             var capabilities = await runtime.RequestAsync("capabilities");
             if (capabilities.GetProperty("protocol").GetString() != (runtime.IsShared ? "jsonrpc-2.0-websocket" : "jsonl-v1"))
                 throw new IOException("运行组件版本不匹配。");
             IsTrialObserver = trialDirectory != null;
-            var result = runtime.IsShared && runtime.SharedGamePid.HasValue
-                ? JsonSerializer.SerializeToElement(new { pid = runtime.SharedGamePid.Value, snapshot = await runtime.RequestAsync("snapshot") })
+            var result = runtime.IsShared && (runtime.SharedGamePid.HasValue || IsPreparedTrial)
+                ? JsonSerializer.SerializeToElement(new { pid = runtime.SharedGamePid, snapshot = await runtime.RequestAsync("snapshot") })
                 : IsTrialObserver
                 ? await runtime.RequestAsync("trial-connect", new { directory = trialDirectory, pid = trialPid })
                 : await runtime.RequestAsync("connect", new { information = InformationEnabled });
-            if (runtime.IsShared && runtime.SharedGamePid.HasValue && InformationEnabled)
+            if (runtime.IsShared && runtime.SharedGamePid.HasValue && InformationEnabled && !IsPreparedTrial)
                 await runtime.RequestAsync("mods-enable", new { id = "bluemilk.information" });
             connected = true;
             ShowSnapshot(IsTrialObserver ? result : result.GetProperty("snapshot"));
@@ -96,18 +99,18 @@ internal sealed class ConnectionView : StackPanel
         busy = true; IsPreparedTrial = true; IsTrialObserver = false; Buttons();
         try
         {
-            runtime = RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"), prepared: true);
+            runtime = await OpenSharedAsync();
             Buttons();
             var capabilities = await runtime.RequestAsync("capabilities");
-            if (capabilities.GetProperty("protocol").GetString() != "prepared-trial-v1")
+            if (capabilities.GetProperty("protocol").GetString() != "jsonrpc-2.0-websocket")
                 throw new IOException("试玩运行组件版本不匹配。");
-            return await runtime.RequestAsync("prepare", payload);
+            return await runtime.RequestAsync("trial-prepare", payload);
         }
         finally
         {
             try
             {
-                if (runtime != null) { await runtime.CloseAsync(); runtime = null; }
+                if (runtime != null) { await runtime.DetachAsync(); runtime = null; }
             }
             finally { busy = false; Buttons(); }
         }
@@ -122,12 +125,12 @@ internal sealed class ConnectionView : StackPanel
         status.Title = "正在启动私人试玩"; status.Severity = InfoBarSeverity.Informational;
         try
         {
-            runtime = RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"), prepared: true);
+            runtime = await OpenSharedAsync();
             Buttons();
             var capabilities = await runtime.RequestAsync("capabilities");
-            if (capabilities.GetProperty("protocol").GetString() != "prepared-trial-v1")
+            if (capabilities.GetProperty("protocol").GetString() != "jsonrpc-2.0-websocket")
                 throw new IOException("试玩运行组件版本不匹配。");
-            var result = await runtime.RequestAsync("start", new { manifest });
+            var result = await runtime.RequestAsync("trial-start", new { manifest });
             var snapshot = await runtime.RequestAsync("snapshot");
             connected = true;
             ShowSnapshot(snapshot);
@@ -162,7 +165,7 @@ internal sealed class ConnectionView : StackPanel
             if (IsPreparedTrial)
             {
                 if (operation == "arm") throw new InvalidOperationException("试玩控制必须在生成清单时选择 Mod 包。");
-                await runtime.RequestAsync("control", new { command = operation == "disarm" ? "disable" : "configure", payload = payload ?? new { } });
+                await runtime.RequestAsync(runtime.IsShared ? "trial-control" : "control", new { command = operation == "disarm" ? "disable" : "configure", payload = payload ?? new { } });
             }
             else await runtime.RequestAsync(operation, payload);
             var snapshot = await runtime.RequestAsync("snapshot");
@@ -189,14 +192,16 @@ internal sealed class ConnectionView : StackPanel
 
     private void ShowSnapshot(JsonElement snapshot)
     {
+        if (runtime?.IsShared == true) IsPreparedTrial = snapshot.TryGetProperty("sessionMode", out var mode) && mode.GetString() == "prepared";
         var raw = snapshot.TryGetProperty("state", out var state) ? state.GetString() : null;
         var label = raw switch {
+            "PreparedTrialComplete" => "试玩已结束，等待释放会话",
             "HomeBaseGameState" => "酒馆", "CampaignGameState" => "战役",
             "PvePreBattleState" => "战前阵容", "BattleGameState" => "战斗中",
             "EventsGameState" => "活动", _ => raw ?? "正在读取"
         };
         status.Title = "已连接"; status.Message = $"当前场景：{label}"; status.Severity = InfoBarSeverity.Success;
-        detail.Text = IsPreparedTrial ? "正在运行本地私人试玩；断开或关闭窗口将停止并等待恢复酒馆。"
+        detail.Text = IsPreparedTrial ? "共享试玩会话由服务持有；关闭窗口保留试玩。“停止”或“断开并恢复”会等待恢复酒馆，并影响所有已连接入口。"
             : IsTrialObserver ? "仅读取已有私人试玩，不另行注入。"
             : runtime?.IsShared == true ? "已连接共享服务。关闭窗口保留服务与 Mod；“断开并恢复”会断开所有入口共用的游戏会话。"
             : InformationEnabled ? "本次连接已启用游戏内信息拓展。敌方控制可在战斗助手中单独配置。" : "已连接共享运行时；Mod 管理页显示当前状态与下次连接的启动选择。";

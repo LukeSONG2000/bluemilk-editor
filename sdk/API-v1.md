@@ -179,17 +179,16 @@ Mod 的命令处理器不得等待加载器自身的 shutdown，否则会形成�
 实际目标属于当时原版合法候选且符合指定目标限制；结束后恢复酒馆、清除控制并释放试玩资源，
 战斗开始/结算服务调用均为零。该历史捕获缺少新版模式旁证，因此此结果只验证控制包和生命周期，
 不作为通用战斗回放保真、其他模式、敌方手动 UI 或性能验收。当前通过隔离验证脚本组合加载，
-试玩准备页和独立 CLI 的显式包接入已实现；试玩仍使用互斥的私人 worker，尚未迁入长期 app-server 会话。
+试玩准备页和独立 CLI 已接入共享 app-server；旧私人 worker 入口保留为兼容方式。
 
 
 ## Prepared trial control (v1)
 
-`bluemilk --prepared-jsonl` exposes the same private JSONL protocol as the client's
-prepared worker: `capabilities`, `prepare`, `start`, `snapshot`, `status`, `control`,
+Legacy `bluemilk --prepared-jsonl` exposes the private JSONL protocol: `capabilities`, `prepare`, `start`, `snapshot`, `status`, `control`,
 `disconnect`. Keep stdin open while observing a trial; EOF requests cleanup and
 waits for confirmed restoration. This worker shares the native session lock with
-app-server; disconnect a normal game connection first. It is not yet hosted by
-the persistent app-server.
+app-server; disconnect a normal game connection first. The normal client now uses
+the shared-service operations below rather than spawning this private worker.
 
 `prepare` retains the existing absolute `battle`, `inventory`, `squadType`,
 `durationSeconds`, `auto` fields and optional `control`:
@@ -249,7 +248,7 @@ records `trialPackageSha256`; captured data and the package entry are pinned by 
 prepared source hash. The prepared manifest is an explicit executable artifact;
 changing/uninstalling a package in the shared store does not rewrite older
 prepared artifacts. Re-prepare to select the newly bundled version. Store-selected
-trial versions and configuration are not yet applied to the private worker.
+trial versions and configuration are not yet applied to prepared artifacts.
 
 The original engine first stops its owned control resource without recursively
 entering the registry lock. After engine cleanup resolves, the bootstrap shuts
@@ -258,3 +257,32 @@ requires the matching trial package and all registry entries to be disabled befo
 detaching. Cleanup failures retain ownership and may require a runtime restart;
 they never become a successful receipt. This lifecycle extraction retains the
 existing capture/mode restrictions and does not prove replay fidelity for new modes.
+
+
+## Shared trial session
+
+Use `bluemilk --jsonl --server auto`. Operations are `trial-prepare` (the same
+preparation payload), `trial-start` (`{"manifest":"C:/.../prepared.json"}`),
+`trial-status`, `trial-control` (the same command/payload pair), `trial-stop`.
+`trial-status` and `trial-stop` take no payload. `snapshot` and `mods-list` query
+the current shared trial, not another attachment. Status returns eventCount and
+the local evidence path rather than duplicating the full event log on each poll.
+
+App-server owns the PreparedService in-process and the existing exclusive game
+session lock. No second worker process or second active injection is started.
+Disconnect the normal game session before trial-start. Starting another trial,
+normal connect, or ordinary game operations is rejected until explicit stop has
+confirmed restoration. A partial/unknown start also retains the session route
+until explicit stop, without replaying the start.
+
+Closing a UI window or CLI input stream retains the trial. A fresh frontend uses
+`server.info.sessionMode == "prepared"` to attach to the same session. `disconnect`
+and `trial-stop` restore it for every frontend. Server shutdown also waits for
+cleanup; failure leaves the service available and ownership intact. Stop is
+separate from frontend detach, including the offline preparation form.
+
+After the original engine completes, snapshot reports `PreparedTrialComplete`
+with the cleanup receipt; this is a lifecycle state, not a synthetic live game
+snapshot. Explicit stop releases the remaining script/session. A later explicit
+start is allowed after that confirmation. The request ledger prevents a repeated
+request ID in the same server instance from dispatching start twice.

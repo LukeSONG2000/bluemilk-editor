@@ -21,7 +21,8 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
                     'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
-                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-command'})
+                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-command',
+                    'trial-prepare','trial-start','trial-status','trial-control','trial-stop'})
 
 
 class ProtocolSession:
@@ -35,6 +36,8 @@ class ProtocolSession:
         self._gate = threading.RLock()
         self._closed = False
         self._cleanup = None
+        from shared_trials import SharedTrials
+        self.trials = SharedTrials()
 
     def dispatch(self, line):
         with self._gate:
@@ -60,7 +63,29 @@ class ProtocolSession:
             payload = request.get('payload')
             if payload is not None and not isinstance(payload, dict):
                 raise ValueError('Payload must be an object')
-            if operation == 'capabilities':
+            if self.trials.owns_session and operation not in ('capabilities','snapshot','mods-list',
+                    'trial-prepare','trial-start','trial-status','trial-control','trial-stop','disconnect'):
+                raise RuntimeError('Shared trial owns the game; stop it before normal runtime operations')
+            if operation in ('trial-prepare','trial-start','trial-status','trial-control','trial-stop'):
+                if operation in ('trial-status','trial-stop') and payload not in (None, {}):
+                    raise ValueError('This trial operation takes no payload')
+                if operation == 'trial-start':
+                    if runtime is not native_runtime or getattr(native_runtime,'session',None):
+                        raise RuntimeError('Disconnect the normal game session before starting a trial')
+                    result = self.trials.start(payload)
+                elif operation == 'trial-prepare': result = self.trials.prepare(payload)
+                elif operation == 'trial-status': result = self.trials.status()
+                elif operation == 'trial-control': result = self.trials.control(payload)
+                else:
+                    if runtime is not native_runtime or getattr(native_runtime,'session',None):
+                        raise RuntimeError('Normal game session is active; use disconnect to restore it')
+                    result = self.trials.stop()
+            elif self.trials.owns_session and operation in ('snapshot','mods-list','disconnect'):
+                if payload not in (None, {}):
+                    raise ValueError('This shared trial operation takes no payload')
+                result = (self.trials.snapshot() if operation == 'snapshot' else
+                          self.trials.mods() if operation == 'mods-list' else self.trials.stop())
+            elif operation == 'capabilities':
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
@@ -197,6 +222,7 @@ class ProtocolSession:
     def close(self):
         with self._gate:
             if not self._closed:
+                self.trials.stop()
                 self._cleanup = self.runtime.disconnect()
                 self._closed = True
             return self._cleanup

@@ -6,7 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
@@ -108,6 +109,42 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(rows[-1]['runtimeCleanupRequested'])
         self.runtime.call.assert_called_once()
         self.runtime.disconnect.assert_not_called()
+
+    async def test_shared_trial_survives_frontend_eof_and_retains_failed_cleanup(self):
+        self.runtime.session = None
+        trial = SimpleNamespace(detached=False, complete=None, evidence=Path('trial-evidence.json'))
+        prepared = Mock(trial=trial)
+        prepared.start.return_value = {'started':True,'pid':123}
+        prepared.status.return_value = {'pid':123,'messages':[{'event':'observed'}]}
+        prepared.snapshot.return_value = {'state':'BattleGameState','units':[]}
+        prepared.disconnect.side_effect = RuntimeError('cleanup pending')
+        with patch('shared_trials.PreparedService',return_value=prepared):
+            async with self.client() as first:
+                response = await self.call(first,'trial-start','trial-start',payload={'manifest':'explicit.json'})
+                self.assertTrue(response['result']['started'])
+                again = await self.call(first,'trial-start','trial-start',payload={'manifest':'explicit.json'})
+                self.assertEqual(again,response)
+            prepared.disconnect.assert_not_called()
+            async with self.client() as second:
+                state = await self.call(second,'trial-state','trial-status')
+                self.assertTrue(state['result']['active'])
+                self.assertEqual(state['result']['eventCount'],1)
+                self.assertNotIn('messages',state['result'])
+                snapshot = await self.call(second,'trial-snapshot')
+                self.assertEqual(snapshot['result']['sessionMode'],'prepared')
+                self.assertIn('error',await self.call(second,'start-again','trial-start',payload={'manifest':'explicit.json'}))
+                self.assertIn('error',await self.call(second,'normal-connect','connect'))
+                self.assertIn('error',await self.call(second,'failed-stop','trial-stop'))
+                self.assertTrue(self.server.session.trials.owns_session)
+                self.assertEqual(self.server.game_pid,123)
+                prepared.disconnect.side_effect = None
+                prepared.disconnect.return_value = {'disconnected':True}
+                stopped = await self.call(second,'confirmed-stop','trial-stop')
+                self.assertTrue(stopped['result']['disconnected'])
+                self.assertFalse(self.server.session.trials.owns_session)
+                self.assertIsNone(self.server.game_pid)
+        prepared.start.assert_called_once()
+        self.runtime.connect.assert_not_called()
 
     async def test_explicit_shutdown_ack_and_listener_close(self):
         async with self.client() as client:
