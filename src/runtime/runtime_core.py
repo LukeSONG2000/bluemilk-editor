@@ -72,17 +72,25 @@ class Runtime:
             if checked['manifest']['id'] != 'bluemilk.information':
                 raise RuntimeError('Bundled information Mod identity mismatch')
             installed = install(package, checked['sha256'], bundled=True)
-            if installed.get('suppressed'):
-                if information:
-                    raise RuntimeError('Information Mod was uninstalled; explicitly install it before enabling')
-            else:
+            from mod_profile import acquire
+            startup, selected, leases = acquire()
+            self.package_leases.update(leases)
+            for _, payload in selected:
+                self.register_package(payload[2])
+            if 'bluemilk.information' not in startup['selections'] and not installed.get('suppressed'):
                 self.register_package(checked['sha256'])
+            for identity, _ in selected:
+                if startup['selections'][identity]['enabled']:
+                    self.call_args('modcommand', 'enable', {'id': identity})
             if information:
+                if installed.get('suppressed') and 'bluemilk.information' not in startup['selections']:
+                    raise RuntimeError('Information Mod was uninstalled; explicitly install it before enabling')
                 self.script.exports_sync.modcommand('enable', {'id':'bluemilk.information'})
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')
             self.calendar_claims = CalendarClaims(DATA/'calendar-claims')
             self.quest_claims = QuestClaims(DATA/'quest-claims')
-            return {'pid':game['pid'], 'snapshot':self.script.exports_sync.inspect()}
+            return {'pid':game['pid'], 'snapshot':self.script.exports_sync.inspect(),
+                    'modProfileRevision': startup['revision']}
         except Exception:
             if self.script:
                 # A failed installation can own hooks/UI. Verify restoration
@@ -137,6 +145,9 @@ class Runtime:
 
     def uninstall_package(self, sha256):
         from mod_store import remove
+        from mod_profile import read
+        if any(item['sha256'] == sha256 for item in read()['selections'].values()):
+            raise ValueError('Remove this version from the startup profile before uninstalling')
         if sha256 in self.package_leases:
             payload, release = self.package_leases[sha256]
             result = self.call_args('modunregisterpackage', payload[0]['id'], sha256)
