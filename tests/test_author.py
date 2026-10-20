@@ -1,0 +1,43 @@
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+from mod_author import pack
+from mod_package import inspect_package
+
+
+class AuthorTests(unittest.TestCase):
+    def test_reproducible_validated_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            a, b = (Path(directory) / name for name in ('a.bluemilk', 'b.bluemilk'))
+            first = pack(ROOT / 'examples/lifecycle', a)
+            second = pack(ROOT / 'examples/lifecycle', b)
+            self.assertEqual(a.read_bytes(), b.read_bytes())
+            self.assertEqual(first['sha256'], second['sha256'])
+            self.assertFalse(inspect_package(a)['executed'])
+            with self.assertRaises(FileExistsError):
+                pack(ROOT / 'examples/lifecycle', a)
+
+    def test_missing_entry_creates_no_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'source'
+            source.mkdir()
+            manifest = json.loads((ROOT / 'examples/lifecycle/mod.json').read_text())
+            (source / 'mod.json').write_text(json.dumps(manifest))
+            (source / 'other.js').write_text('throw Error("must not execute")')
+            output = Path(directory) / 'bad.bluemilk'
+            with self.assertRaises(ValueError):
+                pack(source, output)
+            self.assertFalse(output.exists())
+
+    def test_output_inside_source_rejected(self):
+        with self.assertRaises(ValueError):
+            pack(ROOT / 'examples/lifecycle', ROOT / 'examples/lifecycle/bad.bluemilk')
+
+
+if __name__ == '__main__':
+    unittest.main()

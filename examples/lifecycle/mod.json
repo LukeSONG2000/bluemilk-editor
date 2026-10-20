@@ -1,0 +1,13 @@
+{
+  "id": "org.example.lifecycle",
+  "name": "Lifecycle example",
+  "publisher": "Example author",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": [],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}
