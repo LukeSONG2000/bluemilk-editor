@@ -365,6 +365,41 @@ still restricts third-party command registration; the example currently targets
 the normal shared session.
 
 
+### Experimental original battle events
+
+`sdk.battle.events.install({capacity:256})` requires `battle.events.read` and
+must be called in the package factory. Return its lifecycle handle. As with
+the existing SDK installers, one SDK-owned handle is currently allowed per Mod;
+combining multiple providers in a single Mod remains pending. The loader owns
+the native subscription, including partial installation and failed-detach retry.
+
+The handle exposes the command `read`, with `{}` for the retained backlog or
+`{after: previousResult.next}` to continue. `next` is an opaque activation-specific
+cursor `{generation,sequence}`; re-enabling creates a new generation and rejects
+old cursors. Reads are non-destructive and return JSON copies, so independent
+consumers can keep separate cursors. Capacity is 16..4096; `lost` explicitly
+reports records evicted since the supplied cursor. Read errors are counted in
+`errors` and described in `lastError`; they are not silently represented as an
+empty successful event history. There is no background polling or per-event IPC.
+
+The first event is `battle-state-requested`, observed on entry to the original
+`BattleFsmController.SetBattleState`. Fields are `sequence`, `at` (local wall-clock
+milliseconds), `fsm` (opaque, process-local identity), `requestedState` (original
+integer enum) and `turn` (original turn count at the request). This is a **request**,
+not proof of a completed transition, executed ability, damage or turn completion.
+The hook observes all instances calling that method in the attached client;
+consumers must distinguish `fsm` identities. No arguments, return values, RNG or
+combat rules are changed. Damage/effect/ability-completion subscriptions remain
+pending. Trusted in-process Mod code is not sandboxed.
+
+Example: `examples/battle-events`. Package using the existing `tools/mod_author.py`
+tool and invoke through shared `mods-command` with command `read`. Isolated
+acceptance: `node tests/battle_events.mjs` (bounded history, stale cursors, repeat
+enable/disable, attach/flush/detach failures and retained factory ownership).
+Original-runtime acceptance covers two subscriptions and original basic actions
+in the local six-unit PVE fixture, followed by Home/guard/GC restoration. This
+does not establish performance or cross-mode acceptance.
+
 ### Trial cleanup diagnostics
 
 `trial-status.cleanupProgress` reports the latest `trial-cleanup-progress`

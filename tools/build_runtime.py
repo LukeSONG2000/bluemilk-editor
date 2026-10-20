@@ -26,7 +26,7 @@ TRIAL = [
     "graphics_profile.js", "loading_profile.js", "original_ai_trace.js",
     "original_ai_priority.js", "enemy_manual_ui.js", "enemy_input_gate.js",
     "probe_visual.js", "probe_simulation.js", "live_arena_taunt.js",
-    "mod_runtime.js", "bridge.js", "trial_control.js", "trial_mod.js", "trial_mod_bootstrap.js",
+    "battle_events.js", "mod_runtime.js", "bridge.js", "trial_control.js", "trial_mod.js", "trial_mod_bootstrap.js",
 ]
 
 

@@ -1,0 +1,13 @@
+{
+  "id": "org.example.battle-events",
+  "name": "Original battle event reader",
+  "publisher": "BlueMilk Editor example",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": ["battle.events.read"],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}
