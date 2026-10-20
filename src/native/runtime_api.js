@@ -148,7 +148,14 @@ globalThis.RuntimeApi = (() => {
       else {const p=primitive(a.kind),value=Memory.alloc(p[0]);value[p[2]](a.kind==='bool'?(a.value?1:0):a.value);keep.push(value);params.add(i*P).writePointer(value);}
     });
     const exception=Memory.alloc(P);exception.writePointer(nil);
-    const result=api('runtime_invoke','pointer',['pointer','pointer','pointer','pointer'])(method,object||nil,params,exception);
+    let result;
+    try{result=api('runtime_invoke','pointer',['pointer','pointer','pointer','pointer'])(method,object||nil,params,exception);}
+    catch(cause){
+      let target=method.toString();
+      try{target=fullName(api('method_get_class','pointer',['pointer'])(method))+'.'+api('method_get_name','pointer',['pointer'])(method).readUtf8String();}catch{}
+      const error=Error('Native invocation failed: '+target+'; '+String(cause));
+      error.nativeInvocation=target;error.cause=cause;throw error;
+    }
     const ex=exception.readPointer();
     if(!ex.isNull()) {const error=Error('Managed exception type: '+fullName(classOf(ex)));error.managedException=ex;throw error;}
     return result; // value returns are boxed; explicit unbox below
