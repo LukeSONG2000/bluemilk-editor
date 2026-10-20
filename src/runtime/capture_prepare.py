@@ -32,6 +32,7 @@ def prepare_request(payload, assets, output):
     prefix = output/('prepared-'+uuid.uuid4().hex)
     result = prepare(payload['battle'], payload['inventory'], None, prefix, payload['squadType'],
                      'visual', payload['durationSeconds'], payload['auto'],
-                     schema_bundle=folder/'schema.json', module_root=folder, control=payload.get('control'))
+                     schema_bundle=folder/'schema.json', module_root=folder, control=payload.get('control'),
+                     trial_package=folder/'trial.bluemilk', trial_sha=manifest['files']['trial.bluemilk'])
     return dict(manifest=str(prefix.with_suffix('.json')), prepared=result,
                 started=False, runtimeCompatibilityVerified=False)

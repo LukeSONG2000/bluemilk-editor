@@ -123,3 +123,7 @@ rpc.exports={...rpc.exports,
  disarm:()=>controlOwner?BlueMilkMods.invoke(controlOwner.modId,'disarm',{}):originalControl.disarm(),
  enemyinput:(operation,request)=>BlueMilkMods.invoke(controlOwner?.modId,'enemy-input',{operation,request})
 };
+
+// Prepared trial owns guard/GC lifetime; stop the resource handle directly here
+// so engine cleanup never re-enters a registry operation awaiting that engine.
+globalThis.stopPreparedBattleControl=()=>controlOwner?controlOwner.stop():Promise.resolve({lifecycle:"stopped"});

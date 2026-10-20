@@ -26,7 +26,7 @@ TRIAL = [
     "graphics_profile.js", "loading_profile.js", "original_ai_trace.js",
     "original_ai_priority.js", "enemy_manual_ui.js", "enemy_input_gate.js",
     "probe_visual.js", "probe_simulation.js", "live_arena_taunt.js",
-    "mod_runtime.js", "bridge.js", "trial_control.js",
+    "mod_runtime.js", "bridge.js", "trial_control.js", "trial_mod.js", "trial_mod_bootstrap.js",
 ]
 
 
@@ -62,13 +62,15 @@ def prepare(names_path, schema_path):
     # Build through the same public package format used by third-party authors.
     (ROOT / "logs").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=ROOT / "logs") as temporary:
-        for name in ("information", "battle-control"):
+        for name in ("information", "battle-control", "trial"):
             package = Path(temporary) / (name + ".bluemilk")
             pack(ROOT / "mods" / name, package)
             inspect_package(package)
             shutil.copyfile(package, assets / package.name)
-    manifest(assets, modules + ["names.json", "information.bluemilk", "battle-control.bluemilk"])
-    manifest(trial, TRIAL + ["schema.json"])
+            if name == "trial":
+                shutil.copyfile(package, trial / package.name)
+    manifest(assets, modules + ["names.json", "information.bluemilk", "battle-control.bluemilk", "trial.bluemilk"])
+    manifest(trial, TRIAL + ["schema.json", "trial.bluemilk"])
     client_data = ROOT / "src/assets"
     client_data.mkdir(exist_ok=True)
     (client_data / "names.json").write_bytes(names_bytes)

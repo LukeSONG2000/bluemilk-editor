@@ -67,11 +67,23 @@ class PreparedTrial:
                 self.evidence.write_bytes(temporary.read_bytes())
                 temporary.unlink()
 
+    def cleanup_confirmed(self):
+        if not cleanup_complete(self.complete, self.manifest['mode']):
+            return False
+        expected=self.manifest.get('trialPackageSha256')
+        if not expected:
+            return True
+        trial=self.complete.get('trialMod', {})
+        mods=trial.get('registry', {}).get('mods', [])
+        return (trial.get('packageSha256')==expected and isinstance(mods,list) and bool(mods)
+                and all(isinstance(m,dict) and m.get('state')=='disabled' for m in mods)
+                and any(m.get('manifest',{}).get('id')=='bluemilk.trial' and m.get('packageSha256')==expected for m in mods))
+
     def status(self):
         with self.lock:
             return dict(pid=self.pid, mode=self.manifest['mode'], detached=self.detached,
                         stopSent=self.stop_sent, completion=self.complete,
-                        cleanupConfirmed=cleanup_complete(self.complete, self.manifest['mode']),
+                        cleanupConfirmed=self.cleanup_confirmed(),
                         errors=list(self.errors), messages=list(self.messages))
 
     def message(self, message, data):
@@ -130,13 +142,16 @@ class PreparedTrial:
         if not self.stop_sent:
             # Set before dispatch: an RPC exception must never cause replay.
             self.stop_sent = True
-            self.script.exports_sync.trialcommand('demo-control', {'action': 'stop'})
+            if self.manifest.get('trialPackageSha256'):
+                self.script.exports_sync.trialstop()
+            else:
+                self.script.exports_sync.trialcommand('demo-control', {'action': 'stop'})
         return self.status()
 
     def close(self):
         if self.detached:
             return self.status()
-        if self.script is not None and not cleanup_complete(self.complete, self.manifest['mode']):
+        if self.script is not None and not self.cleanup_confirmed():
             raise RuntimeError('Native cleanup unconfirmed; retain host, script and session ownership')
         if self.session is not None:
             self.session.detach()

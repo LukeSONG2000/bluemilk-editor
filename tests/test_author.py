@@ -20,6 +20,15 @@ class AuthorTests(unittest.TestCase):
             self.assertEqual(manifest['capabilities'], ['battle.control'])
             self.assertIn('sdk.battle.control.install()', (ROOT / 'mods/battle-control/main.js').read_text())
 
+    def test_official_trial_public_factory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'trial.bluemilk'
+            pack(ROOT / 'mods/trial', output)
+            manifest = inspect_package(output)['manifest']
+            self.assertEqual(manifest['id'], 'bluemilk.trial')
+            self.assertEqual(manifest['capabilities'], ['battle.trial'])
+            self.assertIn('sdk.battle.trial.install()', (ROOT / 'mods/trial/main.js').read_text())
+
     def test_configuration_example_and_runtime_validator_match(self):
         from mod_config_schema import resolve
         self.assertEqual((ROOT / 'tools/mod_config_schema.py').read_bytes(),
