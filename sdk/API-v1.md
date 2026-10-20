@@ -47,7 +47,10 @@ available separately. This first interface is not the complete planned SDK.
 Actual game-process acceptance so far covers two package enable/disable cycles
 at the Home screen. The WinUI Mod page now exposes inspection, installation, loading
 and enable/disable through the shared protocol; independent CLI readback confirms
-the same enabled/disabled state. Visual acceptance is still pending because both
-the prior client and this build produced blank client areas on the current desktop.
+the same enabled/disabled state. A clean rebuild and fresh publish directory
+restored rendering after earlier artifacts showed blank client areas. The Mod page
+was inspected in the normal light theme with no overlap. Release scripts now
+require a channel-specific rebuild and an empty output directory; this does not
+establish the exact cache or binary defect behind the earlier blank windows.
 Battle-mode UI, restart selection, upgrade/uninstall and cross-mode/performance
 acceptance remain outstanding.

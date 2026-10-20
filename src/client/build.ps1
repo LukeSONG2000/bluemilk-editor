@@ -2,11 +2,23 @@ param([string]$OutputDirectory, [switch]$ForMsix)
 $ErrorActionPreference = 'Stop'
 $clientRoot = $PSScriptRoot
 $output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $clientRoot 'publish' }
-$publishArguments = @('publish', (Join-Path $clientRoot 'Swgoh.Client.csproj'), '-c', 'Release', '-o', $output)
-if ($ForMsix) {
-    $publishArguments += '-p:WindowsAppSdkUndockedRegFreeWinRTInitialize=false'
-    $publishArguments += '-p:BlueMilkMsix=true'
+if (Test-Path -LiteralPath $output) {
+    if (!(Test-Path -LiteralPath $output -PathType Container) -or
+        (Get-ChildItem -LiteralPath $output -Force | Select-Object -First 1)) {
+        throw 'Publish output must be an empty directory. Choose a new directory to preserve prior artifacts.'
+    }
 }
+$project = Join-Path $clientRoot 'Swgoh.Client.csproj'
+$channelArguments = @()
+if ($ForMsix) {
+    $channelArguments += '-p:WindowsAppSdkUndockedRegFreeWinRTInitialize=false'
+    $channelArguments += '-p:BlueMilkMsix=true'
+}
+# Channel-specific generated output must be rebuilt, not inherited from another
+# publish or an older incremental build. Do not delete user-selected directories.
+& dotnet build $project '-c' 'Release' '-t:Rebuild' @channelArguments
+if ($LASTEXITCODE -ne 0) { throw 'Client release rebuild failed.' }
+$publishArguments = @('publish', $project, '-c', 'Release', '--no-build', '-o', $output) + $channelArguments
 & dotnet @publishArguments
 if ($LASTEXITCODE -ne 0) { throw 'Client publish failed.' }
 $worker = Join-Path (Split-Path $clientRoot -Parent) 'dist/SWGoH-Runtime.exe'
