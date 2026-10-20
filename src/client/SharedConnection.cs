@@ -17,6 +17,7 @@ internal sealed class SharedConnection : IDisposable
     private int disposed;
     internal int HostPid { get; private set; }
     internal int? GamePid { get; private set; }
+    internal string SessionMode { get; private set; } = "normal";
 
     internal static Uri ValidateEndpoint(string endpoint)
     {
@@ -49,6 +50,7 @@ internal sealed class SharedConnection : IDisposable
                 throw new IOException("共享服务身份已改变；未发送游戏操作，请重新连接。");
             if (info.TryGetProperty("gamePid", out var pid) && pid.ValueKind == JsonValueKind.Number)
                 connection.GamePid = pid.GetInt32();
+            if (info.TryGetProperty("sessionMode", out var mode)) connection.SessionMode = mode.GetString() ?? "normal";
             return connection;
         }
         catch { connection.Dispose(); throw; }

@@ -83,6 +83,7 @@ class AppServer:
                 return {'jsonrpc': '2.0', 'id': request_id, 'result': {
                     'instance': self.instance, 'transport': 'websocket',
                     'hostPid': os.getpid(), 'gamePid': self.game_pid,
+                    'sessionMode': 'prepared' if self.session.trials.owns_session else ('normal' if self.game_pid is not None else 'idle'),
                     'sharedRuntime': True, 'remoteEnabled': False,
                     'disconnectPolicy': 'Frontend disconnect retains shared runtime',
                     'retryPolicy': 'Never replay against a different server instance'}}
@@ -117,9 +118,9 @@ class AppServer:
                 unknown = self.error(request_id, -32001, 'Dispatch outcome unknown; do not replay')
                 self._responses[request_id] = (canonical, unknown)
                 result = await asyncio.shield(asyncio.to_thread(self.session.dispatch, line))
-                if result.get('ok') and params.get('operation') == 'connect':
+                if result.get('ok') and params.get('operation') in ('connect', 'trial-start'):
                     self.game_pid = result['result'].get('pid')
-                elif result.get('ok') and params.get('operation') == 'disconnect':
+                elif result.get('ok') and params.get('operation') in ('disconnect', 'trial-stop'):
                     self.game_pid = None
                 if result.get('ok') and params.get('operation') == 'capabilities':
                     result['result'] = {**result['result'], 'protocol': 'jsonrpc-2.0-websocket',

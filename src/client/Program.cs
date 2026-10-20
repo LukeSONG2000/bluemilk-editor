@@ -287,7 +287,7 @@ public sealed partial class ShellApplication : Application
             {
                 if (output != null) await File.WriteAllTextAsync(output + ".ready", started.GetRawText());
                 // The harness sends WM_CLOSE to this window; the normal Closing
-                // handler must await runtime cleanup before application exit.
+                // handler detaches the frontend; shared trial ownership remains in app-server.
                 await Task.Delay(Timeout.Infinite);
             }
             await Task.Delay(16000);

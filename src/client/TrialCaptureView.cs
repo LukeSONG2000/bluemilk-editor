@@ -28,7 +28,7 @@ internal sealed class TrialCaptureView : StackPanel
         this.connection = connection;
         Spacing = 16; Padding = new Thickness(32); MaxWidth = 1000;
         Children.Add(new TextBlock { Text = "私人试玩", FontSize = 28 });
-        Children.Add(new TextBlock { Text = "在酒馆启动已准备的私人战斗。先断开普通连接；试玩期间由同一个运行组件持有游戏，停止后恢复酒馆。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(new TextBlock { Text = "先断开普通游戏连接再启动试玩。关闭窗口保留试玩，可由客户端或 CLI 接手；停止后恢复酒馆。", TextWrapping = TextWrapping.Wrap });
         Children.Add(manifest);
         var trialActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         trialActions.Children.Add(browse); trialActions.Children.Add(launch); trialActions.Children.Add(finish);
