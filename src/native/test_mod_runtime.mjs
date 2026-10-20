@@ -98,3 +98,18 @@ assert.equal((await packages.unregisterPackage('org.example.packaged','a'.repeat
 assert.equal((await packages.command('list')).mods.some(x=>x.manifest.id==='org.example.packaged'),false);
 assert.equal(packages.registerPackage(packageManifest,entry,'a'.repeat(64)).state,'disabled');
 console.log('PASS package unregister: confirmed stop, dependency blocking, exact identity and cleanup-failure retention');
+const configInput={nested:{value:7}};
+mods.registerPackage(manifest('config-sample'), `module.exports=sdk=>{
+ const captured=sdk.config.read();captured.nested.value=99;
+ let lifecycle='enabled';return {ready:Promise.resolve(),
+ status:()=>({lifecycle,config:sdk.config.read()}),
+ stop:async()=>{lifecycle='stopped';return {lifecycle};}};
+};`, 'd'.repeat(64), configInput);
+configInput.nested.value=55;
+await mods.command('enable',{id:'bluemilk.config-sample'});
+assert.equal((await mods.command('list')).mods.find(x=>x.manifest.id==='bluemilk.config-sample').runtime.config.nested.value,7);
+await mods.command('disable',{id:'bluemilk.config-sample'});
+await mods.command('enable',{id:'bluemilk.config-sample'});
+assert.equal((await mods.command('list')).mods.find(x=>x.manifest.id==='bluemilk.config-sample').runtime.config.nested.value,7);
+await mods.unregisterPackage('bluemilk.config-sample','d'.repeat(64));
+console.log('PASS SDK configuration snapshot: input and reader mutation isolation, repeated lifecycle');

@@ -20,7 +20,8 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'inventory-characters','inventory-ships','capture-start','capture-status','capture-stop',
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
-                    'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall'})
+                    'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
+                    'mods-config-read','mods-config-write'})
 
 
 class ProtocolSession:
@@ -63,6 +64,13 @@ class ProtocolSession:
                 result = dict(protocol='jsonl-v1', operations=OPERATIONS,
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
+            elif operation in ('mods-config-read', 'mods-config-write'):
+                from mod_config import read, write
+                fields = {'sha256'} if operation == 'mods-config-read' else {'sha256', 'revision', 'values'}
+                if not payload or set(payload) != fields:
+                    raise ValueError('Configuration payload requires ' + ', '.join(sorted(fields)))
+                result = (read(payload['sha256']) if operation == 'mods-config-read' else
+                          write(payload['sha256'], payload['revision'], payload['values']))
             elif operation in ('mods-package-register', 'mods-package-uninstall'):
                 if runtime is not native_runtime:
                     raise ValueError('Mod package changes require the normal runtime')

@@ -36,7 +36,7 @@ globalThis.BlueMilkMods=(()=>{
   if(typeof factory!=='function')throw Error('Mod factory required');
   records.set(manifest.id,{manifest:JSON.parse(JSON.stringify(manifest)),factory,instance:null,state:'disabled',error:null});
  }
- function registerPackage(manifest,source,sha256){
+ function registerPackage(manifest,source,sha256,configuration={}){
   if(busy)throw Error('Another Mod lifecycle operation is in progress');
   if(typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)||typeof source!=='string')throw Error('Invalid package registration');
   const existing=records.get(manifest?.id);
@@ -44,6 +44,8 @@ globalThis.BlueMilkMods=(()=>{
    if(existing.packageSha256===sha256)return view(existing);
    throw Error('Another package or builtin already owns this Mod ID');
   }
+  if(!configuration||typeof configuration!=='object'||Array.isArray(configuration))throw Error('Configuration must be an object');
+  const configurationJson=JSON.stringify(configuration);
   // Compilation does not evaluate the entry. This is trusted native-process
   // code when enabled, not a sandbox, and cannot be made safe by this wrapper.
   const execute=new Function('module','exports','"use strict";\n'+source);
@@ -57,6 +59,7 @@ globalThis.BlueMilkMods=(()=>{
    const sdk=Object.freeze({
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
+    config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
     battle:Object.freeze({information:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire information UI during the Mod factory call');
@@ -161,5 +164,5 @@ globalThis.BlueMilkMods=(()=>{
  return {register,registerPackage,command,shutdown,unregisterPackage};
 })();
 rpc.exports={...rpc.exports,modcommand:(op,payload)=>BlueMilkMods.command(op,payload),
- modregisterpackage:(manifest,source,sha256)=>BlueMilkMods.registerPackage(manifest,source,sha256),
+ modregisterpackage:(manifest,source,sha256,configuration)=>BlueMilkMods.registerPackage(manifest,source,sha256,configuration),
  modunregisterpackage:(id,sha256)=>BlueMilkMods.unregisterPackage(id,sha256)};
