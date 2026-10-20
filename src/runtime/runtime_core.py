@@ -18,7 +18,7 @@ EXPECTED = '12cc254525a58aedea122a2967d0476da05b98ef0c219dc18cfc0b7207538db6'
 MODULES = ['runtime_api.js', 'unity_scene_api.js', 'battle_status_reader.js',
            'battle_attributes_reader.js', 'battle_input.js', 'runtime_observer.js',
            'enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js', 'calendar_bridge.js',
-           'battle_info_ui.js', 'mod_runtime.js', 'trial_mod.js']
+           'battle_info_ui.js', 'battle_events.js', 'mod_runtime.js', 'trial_mod.js']
 def find_game():
     games = []
     for p in psutil.process_iter(['pid','name','exe','cmdline']):

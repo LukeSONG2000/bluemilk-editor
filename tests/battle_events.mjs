@@ -1,0 +1,51 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const c=vm.createContext({rpc:{exports:{}},saved:[]});
+let callbacks,attaches=0,detaches=0,failAttach=false,failDetach=false,failFlush=false,failRead=false;
+c.RuntimeApi={findClass:n=>n,findMethod:(k,n,count)=>{
+ assert.equal(k,'BattleFsmController');assert.equal(n,'SetBattleState');assert.equal(count,1);
+ return {readPointer:()=>123};},readValue:()=>{if(failRead)throw Error('read failed');return 4;}};
+c.Interceptor={attach:(address,cb)=>{assert.equal(address,123);if(failAttach)throw Error('attach failed');callbacks=cb;attaches++;
+ return {detach:()=>{if(failDetach)throw Error('detach failed');detaches++;}};},flush:()=>{if(failFlush)throw Error('flush failed');}};
+for(const path of ['src/native/battle_events.js','sdk/mod_runtime.js'])vm.runInContext(fs.readFileSync(new URL('../'+path,import.meta.url),'utf8'),c);
+const m=JSON.parse(fs.readFileSync(new URL('../examples/battle-events/mod.json',import.meta.url),'utf8'));
+const source="module.exports=sdk=>sdk.battle.events.install({capacity:16});";
+const mods=c.BlueMilkMods;
+mods.registerPackage(m,source,'a'.repeat(64));
+const emit=state=>callbacks.onEnter([{toString:()=> 'opaque-fsm'},{toInt32:()=>state}]);
+let oldCursor;
+for(let round=0;round<2;round++){
+ await mods.command('enable',{id:m.id});
+ if(oldCursor)await assert.rejects(mods.invoke(m.id,'read',{after:oldCursor}),/generation/);
+ for(let n=0;n<20;n++)emit(n);
+ const result=await mods.invoke(m.id,'read',{});
+ assert.equal(result.events.length,16);assert.equal(result.lost,4);assert.equal(result.next.sequence,20);
+ assert.equal(result.events[0].requestedState,4);assert.equal(result.events[0].turn,4);
+ result.events[0].turn=-1;assert.equal((await mods.invoke(m.id,'read',{})).events[0].turn,4);
+ assert.equal((await mods.invoke(m.id,'read',{after:result.next})).events.length,0);
+ await assert.rejects(mods.invoke(m.id,'read',{after:{...result.next,sequence:21}}),/cursor/);
+ oldCursor=result.next;
+ failRead=true;emit(100);failRead=false;
+ assert.equal((await mods.invoke(m.id,'read',{})).errors,1);
+ failDetach=true;await assert.rejects(mods.command('disable',{id:m.id}),/detach failed/);
+ emit(101);assert.equal((await mods.command('list')).mods[0].runtime.lastSequence,20);
+ failDetach=false;await mods.command('disable',{id:m.id});
+ emit(102);await assert.rejects(mods.invoke(m.id,'read',{}),/enabled/);
+}
+assert.equal(attaches,2);assert.equal(detaches,2);
+failFlush=true;await assert.rejects(mods.command('enable',{id:m.id}),/flush failed/);
+failFlush=false;await mods.command('disable',{id:m.id});assert.equal(detaches,3);
+failAttach=true;await assert.rejects(mods.command('enable',{id:m.id}),/attach failed/);
+failAttach=false;await mods.command('disable',{id:m.id});
+const denied={...m,id:'org.example.denied',capabilities:[]};mods.registerPackage(denied,source,'b'.repeat(64));
+await assert.rejects(mods.command('enable',{id:denied.id}),/Missing capability/);
+// Failure after handle acquisition must still permit cleanup before ready.
+const fail={...m,id:'org.example.factory-fail'};
+mods.registerPackage(fail,"module.exports=sdk=>{sdk.battle.events.install();throw Error('factory failed');};",'c'.repeat(64));
+await assert.rejects(mods.command('enable',{id:fail.id}),/factory failed/);
+await mods.command('disable',{id:fail.id});
+const direct=c.installBattleEventsMod();await direct.stop();await direct.ready;
+assert.equal(direct.status().lifecycle,'stopped');
+assert.throws(()=>c.installBattleEventsMod({capacity:1}),/capacity/);
+console.log('PASS original event subscription: ring/cursor, loss, copy, repeated enable, attach/detach/flush failure, factory ownership, early stop');

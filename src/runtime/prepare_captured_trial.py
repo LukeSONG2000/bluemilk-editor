@@ -106,7 +106,7 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
     if enemy_basic_demo or enemy_control:
         modules += ['enemy_input_gate.js']
     if mode == 'visual':
-        modules += ['mod_runtime.js', 'trial_mod.js']
+        modules += ['battle_events.js', 'mod_runtime.js', 'trial_mod.js']
     if control_record:
         modules += ['enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js',
                     'bridge.js', 'trial_control.js']

@@ -81,7 +81,15 @@ globalThis.BlueMilkMods=(()=>{
     version:1,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
-    battle:Object.freeze({snapshot,trial:Object.freeze({
+    battle:Object.freeze({snapshot,events:Object.freeze({
+     install(options={}){
+      if(!creating)throw Error('Acquire battle events during the Mod factory call');
+      if(!manifest.capabilities.includes('battle.events.read'))throw Error('Missing capability: battle.events.read');
+      if(owned)throw Error('A lifecycle handle is already acquired by this Mod');
+      if(typeof installBattleEventsMod!=='function')throw Error('Original battle events provider unavailable');
+      owned=installBattleEventsMod(options);records.get(manifest.id).instance=owned;return owned;
+     }
+    }),trial:Object.freeze({
      install(){
       if(!creating)throw Error('Acquire trial ownership during the Mod factory call');
       if(!manifest.capabilities.includes('battle.trial'))throw Error('Missing capability: battle.trial');
