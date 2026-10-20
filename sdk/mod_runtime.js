@@ -1,13 +1,14 @@
 'use strict';
 // Shared lifecycle contract. In-process modules are trusted code, not a sandbox.
 globalThis.BlueMilkMods=(()=>{
- const records=new Map();let busy=false;
+ const records=new Map();let busy=false,closing=false;const idleWaiters=[];
+ function release(){busy=false;for(const resolve of idleWaiters.splice(0))resolve();}
  const validId=x=>typeof x==='string'&&x.length<=128&&/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(x);
  const validVersion=x=>typeof x==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(x)&&x.split('.').every(n=>Number.isSafeInteger(Number(n)));
  const view=r=>({manifest:JSON.parse(JSON.stringify(r.manifest)),state:r.state,error:r.error,packageSha256:r.packageSha256??null,
   runtime:r.instance?.status()??null});
  function register(manifest,factory){
-  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   if(!manifest||!validId(manifest.id)||records.has(manifest.id))throw Error('Invalid or duplicate Mod ID');
   if(!validVersion(manifest.version))throw Error('Invalid Mod version; require major.minor.patch');
   for(const key of ['name','publisher'])
@@ -37,7 +38,7 @@ globalThis.BlueMilkMods=(()=>{
   records.set(manifest.id,{manifest:JSON.parse(JSON.stringify(manifest)),factory,instance:null,state:'disabled',error:null});
  }
  function registerPackage(manifest,source,sha256,configuration={}){
-  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   if(typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)||typeof source!=='string')throw Error('Invalid package registration');
   const existing=records.get(manifest?.id);
   if(existing){
@@ -110,7 +111,7 @@ globalThis.BlueMilkMods=(()=>{
   }
   if(!['enable','disable'].includes(operation)||Object.keys(payload).length!==1||typeof payload.id!=='string')throw Error('Mod operation requires only id');
   const r=records.get(payload.id);if(!r)throw Error('Unknown Mod');
-  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   busy=true;
   try{
    if(operation==='disable'){
@@ -142,10 +143,14 @@ globalThis.BlueMilkMods=(()=>{
     // Preserve the handle, so an explicit disable can verify cleanup.
     throw error;
    }
-  }finally{busy=false;}
+  }finally{release();}
  }
  async function shutdown(){
-  if(busy)throw Error('Mod lifecycle still in progress');
+  if(closing)throw Error('Mod shutdown already in progress');
+  // Drain the accepted command before cleanup, and reject new mutations while
+  // draining. An unresolved native call retains ownership instead of detaching.
+  closing=true;
+  if(busy)await new Promise(resolve=>idleWaiters.push(resolve));
   busy=true;
   try{
    // Dependents first; registration order need not equal dependency order.
@@ -156,19 +161,19 @@ globalThis.BlueMilkMods=(()=>{
     await disable(pending[index]);pending.splice(index,1);
    }
    return {stopped:true};
-  }finally{busy=false;}
+  }finally{release();closing=false;}
  }
  async function invoke(id,name,payload={}){
-  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   const r=records.get(id);
   if(!r||r.state!=='enabled')throw Error('Mod must be enabled before invoking commands');
   if(typeof name!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(name)||!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid Mod command');
   if(typeof r.instance?.command!=='function')throw Error('Mod does not expose commands');
   busy=true;
-  try{return await r.instance.command(name,payload);}finally{busy=false;}
+  try{return await r.instance.command(name,payload);}finally{release();}
  }
  async function unregisterPackage(id,sha256){
-  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   if(!validId(id)||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256))throw Error('Package identity required');
   const r=records.get(id);
   if(!r)return {unregistered:true,alreadyAbsent:true};
@@ -180,7 +185,7 @@ globalThis.BlueMilkMods=(()=>{
    await disable(r);
    records.delete(id);
    return {unregistered:true,alreadyAbsent:false};
-  }finally{busy=false;}
+  }finally{release();}
  }
  return {register,registerPackage,command,invoke,shutdown,unregisterPackage};
 })();
