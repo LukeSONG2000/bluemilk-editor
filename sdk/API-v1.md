@@ -241,6 +241,14 @@ it is not confirmation of restoration. The lifecycle `stop()` waits for the same
 original engine promise and requires Home, guard restoration, GC release, and no
 cleanup errors. Start is single-use per prepared worker, even after disable and
 re-enable. Early host cancellation survives asynchronous package bootstrap.
+When cancellation reaches an owned battle still loading, cleanup waits for the
+original FSM input boundary (previous 34, next 1) before requesting Home. It does
+not advance the FSM or manufacture initialized subsystems. The existing 10-second
+cleanup observation deadline is not permission to force Shutdown: if readiness
+or Home is not confirmed, the host, offline guard and fixture references remain
+owned and cleanup is reported unconfirmed. Existing cleanup errors also prevent
+guard/GC release. Prepared files generated before this change retain their pinned
+old source and must be explicitly prepared again to use the fix.
 
 New visual preparation embeds one verified byte snapshot of `trial.bluemilk` and
 records `trialPackageSha256`; captured data and the package entry are pinned by the
@@ -345,8 +353,12 @@ is made.
 
 An earlier test stopped during partial unit loading and failed to restore the
 client. The game was recovered by normal window close and relaunch, without a
-forced termination. The later successful test is not proof that early-loading
-cancellation is fixed; that path remains unresolved. Readiness is checked from
+forced termination. A subsequent original-client test requested stop at loading
+phase 8, observed cleanup waiting at phase 18, then reached phase 34 and restored
+Home/definitions/guard/GC without errors or service calls. This validates the new
+deferred-exit path for that fixture, not every loading phase or battle mode. A
+targeted phase-19 run missed that phase and is not early-stop acceptance. The
+original failure's exact native exception remains unproven. Query readiness is checked from
 original `input.awaitingAbility`, not by waiting a fixed duration or treating
 any nonempty unit list as a loaded battle. Ordinary prepared-session protocol
 still restricts third-party command registration; the example currently targets
