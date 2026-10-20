@@ -9,6 +9,12 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
  if(typeof options.autoClick!=='boolean'||typeof options.autoAfterClick!=='boolean'||!Number.isFinite(options.maxDurationMs)||options.maxDurationMs<=0)throw Error('Invalid visual probe options');
  if(options.capturePath!==null&&typeof options.capturePath!=='string')throw Error('capturePath must be a string or null');
  const hooks=[],cleanup={home:false,exitedOwnedStates:0,guardRestored:false,gcReleased:false,errors:[]};
+ const cleanupTrace=[];
+ function traceCleanup(phase,details={}){
+  const observation={phase,at:Date.now(),...details};
+  cleanupTrace.push(observation);
+  send({kind:'trial-cleanup-progress',...observation});
+ }
  let f=null,guard=null,entryState=null,entered=null,ownedCampaign=null,exitedOwnBattle=false,campaignExpected=false,foreignTransition=false,returningHome=false;
  let serviceCalls=0,last=-1,clicked=false,readyAt=0,error=null,lastSnapshot=null,terminalObserved=false;
  let enemyGate=null,heldToken=null,heldAt=0;
@@ -190,6 +196,8 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
   }
  }catch(exception){error=String(exception);send({kind:'original-visual-error',error,stack:exception.stack||null});}
  finally{
+  cleanup.trace=cleanupTrace;
+  traceCleanup('begin',{inputReadyObserved:readyAt!==0,lastSnapshot,stopRequested:globalThis.originalTrialStopRequested===true});
   if(globalThis.visualProbe)visualProbe.stopping=true;
   let modsClean=true;
   if(globalThis.trialControlPackage)try{
@@ -214,16 +222,20 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
     let stop=false;
     await R.runOnMainThreadOnce(()=>{
      const state=current(),name=typename(state);
-     if(name==='HomeBaseGameState'){cleanup.home=true;return;}
+     if(name==='HomeBaseGameState'){cleanup.home=true;traceCleanup('home-observed');return;}
      if(!f){stop=true;return;}
      if(name==='CampaignGameState'&&campaignExpected&&!foreignTransition&&!ownedCampaign)ownedCampaign=state;
      const owned=!foreignTransition&&((entered&&state.equals(entered))||(ownedCampaign&&state.equals(ownedCampaign)));
      if(owned){
       // Original EnterState creates the non-null ExitState completion delegate
       // and enters Home only after the previous scene unload finishes.
-      if(!returningHome){returningHome=true;enterType('HomeBaseGameState',R.nil);cleanup.exitedOwnedStates++;}
+      if(!returningHome){
+       returningHome=true;traceCleanup('home-enter-requested',{fromState:name,inputReadyObserved:readyAt!==0});
+       enterType('HomeBaseGameState',R.nil);cleanup.exitedOwnedStates++;
+       traceCleanup('home-enter-returned');
+      }
      }
-     else if(!state.isNull()){cleanup.errors.push('Unowned current state left untouched: '+name);stop=true;return;}
+     else if(!state.isNull()){cleanup.errors.push('Unowned current state left untouched: '+name);traceCleanup('foreign-state-retained',{state:name});stop=true;return;}
      const after=current();
      if(after.isNull()&&!foreignTransition&&!returningHome){returningHome=true;enterType('HomeBaseGameState',R.nil);}
      cleanup.home=typename(current())==='HomeBaseGameState';
@@ -231,8 +243,12 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
     if(stop||cleanup.home)break;
     await wait(100);
    }
-   if(!cleanup.home)cleanup.errors.push('Home restoration not confirmed; GC handles retained');
-  }catch(exception){cleanup.errors.push('state cleanup: '+String(exception));}
+   if(!cleanup.home){cleanup.errors.push('Home restoration not confirmed; GC handles retained');traceCleanup('home-unconfirmed');}
+   else traceCleanup('home-confirmed');
+  }catch(exception){
+   cleanup.errors.push('state cleanup: '+String(exception));
+   traceCleanup('state-cleanup-failed',{error:String(exception),stack:exception.stack||null});
+  }
   finally{
    try{if(enemyGate){
     enemyGate.stop();send({kind:'enemy-gate-complete',events:enemyGate.events,errors:enemyGate.errors,watchdogDeferrals:enemyGate.watchdogDeferrals});
@@ -255,6 +271,7 @@ globalThis.runOriginalVisualTrial=async(overrides={})=>{
     R.releaseAll();cleanup.gcReleased=true;
    }catch(exception){cleanup.errors.push('definitions/GC release: '+String(exception));}
    verifyCapture();
+   traceCleanup('finished',{home:cleanup.home,guardRestored:cleanup.guardRestored,gcReleased:cleanup.gcReleased,errors:cleanup.errors.slice()});
    const verifiedVisualBattle=!error&&readyAt!==0&&clicked&&terminalObserved&&serviceCalls===0&&cleanup.home&&cleanup.guardRestored&&cleanup.errors.length===0;
    const result={kind:'visual-probe-complete',verifiedVisualBattle,error,clicked,terminalObserved,lastSnapshot,serviceCalls,
     blockedSocketCalls:guard?guard.counts:null,socketDiagnostics:guard?guard.diagnostics():null,capture,cleanup,

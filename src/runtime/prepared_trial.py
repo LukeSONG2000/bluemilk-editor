@@ -39,6 +39,7 @@ class PreparedTrial:
         self.attach, self.acquire = attach, acquire
         self.session = self.script = self.release = None
         self.complete = None
+        self.cleanup_progress = None
         self.messages = []
         self.errors = []
         self.pid = None
@@ -83,7 +84,7 @@ class PreparedTrial:
         with self.lock:
             return dict(pid=self.pid, mode=self.manifest['mode'], detached=self.detached,
                         stopSent=self.stop_sent, completion=self.complete,
-                        cleanupConfirmed=self.cleanup_confirmed(),
+                        cleanupConfirmed=self.cleanup_confirmed(), cleanupProgress=self.cleanup_progress,
                         errors=list(self.errors), messages=list(self.messages))
 
     def message(self, message, data):
@@ -92,6 +93,8 @@ class PreparedTrial:
             payload = message.get('payload', {})
             expected = 'visual-probe-complete' if self.manifest['mode'] == 'visual' else 'simulation-probe-complete'
             completed = message.get('type') == 'send' and payload.get('kind') == expected
+            if message.get('type') == 'send' and payload.get('kind') == 'trial-cleanup-progress':
+                self.cleanup_progress = dict(payload)
             if completed:
                 self.complete = payload
             if message.get('type') == 'error':

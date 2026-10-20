@@ -340,3 +340,20 @@ confirm restoration. That run is not a successful SDK or cleanup verification;
 no cross-mode or performance claim is made. Ordinary prepared-session protocol
 still restricts third-party command registration; the example currently targets
 the normal shared session.
+
+
+### Trial cleanup diagnostics
+
+`trial-status.cleanupProgress` reports the latest `trial-cleanup-progress`
+observation independently of completion: begin, home entry requested/returned,
+home observed/confirmed, foreign state retained, failed/unconfirmed, and finished.
+The final cleanup receipt includes the ordered `cleanup.trace` with timestamps,
+last observed FSM progress, whether input readiness had been observed and native
+exception stack when available. These observations never authorize detach:
+existing Home/guard/GC/registry confirmation checks remain mandatory.
+
+Native invocation failures now include the original method identity where
+metadata can be read (otherwise its address) and the original error as cause.
+No retry or alternate state transition is dispatched by diagnostic handling.
+The earlier empty-battle teardown failure is still unresolved; additional
+instrumentation is not evidence that it has been fixed.

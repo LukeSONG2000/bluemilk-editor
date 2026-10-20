@@ -75,6 +75,17 @@ class HostTests(unittest.TestCase):
         self.assertEqual(evidence['completion'],failed)
         self.assertFalse(evidence['cleanupConfirmed'])
 
+    def test_cleanup_progress_never_authorizes_detach(self):
+        self.host.start(1)
+        observation={'kind':'trial-cleanup-progress','phase':'home-enter-requested','at':1}
+        self.host.message({'type':'send','payload':observation},None)
+        self.assertEqual(self.host.status()['cleanupProgress'],observation)
+        self.assertFalse(self.host.done.is_set())
+        self.assertFalse(self.host.cleanup_confirmed())
+        with self.assertRaises(RuntimeError):
+            self.host.close()
+        self.assertEqual(self.released,0)
+
     def test_packaged_trial_requires_matching_disabled_registry(self):
         self.host.manifest['trialPackageSha256']='a'*64
         self.host.complete=dict(GOOD)
