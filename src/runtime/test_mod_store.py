@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import test_mod_package
 from mod_package import inspect_package
 from mod_store import discover, install, locked, registration
@@ -124,14 +124,18 @@ class StoreTests(unittest.TestCase):
     def test_registration_protocol_passes_verified_manifest_source_and_hash(self):
         self.prepare()
         calls = []
-        class Runtime:
-            def call_args(self, operation, *args):
-                calls.append((operation, args))
-                return {'state': 'disabled', 'packageSha256': args[2]}
+        from runtime_core import Runtime
+        runtime = Runtime()
+        runtime.script = Mock()
+        def register(*args):
+            calls.append(('modregisterpackage', args))
+            return {'state': 'disabled', 'packageSha256': args[2]}
+        runtime.script.exports_sync.modregisterpackage.side_effect = register
         with patch.dict(os.environ, {'USERPROFILE': self.temp.name}):
             install(self.path, self.digest)
-            result = ProtocolSession(Runtime()).dispatch(json.dumps({
+            result = ProtocolSession(runtime).dispatch(json.dumps({
                 'id': 1, 'operation': 'mods-package-register', 'payload': {'sha256': self.digest}}))
+            runtime._release_packages()
         self.assertTrue(result['ok'], result)
         self.assertEqual(calls[0][0], 'modregisterpackage')
         self.assertEqual(calls[0][1][1], self.code.decode())

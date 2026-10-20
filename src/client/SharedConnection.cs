@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Swgoh.Client;
 
@@ -10,6 +11,10 @@ internal sealed class SharedConnection : IDisposable
     private readonly string clientId = Guid.NewGuid().ToString("N");
     private string instance = "";
     private long sequence;
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly Channel<JsonElement> replies = Channel.CreateBounded<JsonElement>(1);
+    private Task? receiver;
+    private int disposed;
     internal int HostPid { get; private set; }
     internal int? GamePid { get; private set; }
 
@@ -35,6 +40,7 @@ internal sealed class SharedConnection : IDisposable
             connection.socket.Options.Proxy = null;
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             await connection.socket.ConnectAsync(uri, deadline.Token);
+            connection.receiver = Task.Run(() => connection.ReceiveLoopAsync(connection.lifetime.Token));
             var info = await connection.ExchangeAsync("server.info", null).WaitAsync(deadline.Token);
             connection.instance = info.GetProperty("instance").GetString() ?? throw new IOException("缺少服务实例。");
             connection.HostPid = info.GetProperty("hostPid").GetInt32();
@@ -57,20 +63,9 @@ internal sealed class SharedConnection : IDisposable
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id, method, @params = parameters });
         if (bytes.Length > 16384) throw new ArgumentException("请求超过共享服务的大小限制。");
         await socket.SendAsync(bytes.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None);
-        using var buffer = new MemoryStream();
-        var chunk = new byte[8192];
-        ValueWebSocketReceiveResult received;
-        do
-        {
-            received = await socket.ReceiveAsync(chunk.AsMemory(), CancellationToken.None);
-            if (received.MessageType != WebSocketMessageType.Text)
-                throw new IOException("共享服务连接中断或返回无效消息；请求结果尚未确认。");
-            if (buffer.Length + received.Count > 16 * 1024 * 1024)
-                throw new IOException("共享服务响应超过大小限制。");
-            buffer.Write(chunk, 0, received.Count);
-        } while (!received.EndOfMessage);
-        using var document = JsonDocument.Parse(buffer.ToArray());
-        var root = document.RootElement;
+        JsonElement root;
+        try { root = await replies.Reader.ReadAsync(lifetime.Token); }
+        catch (ChannelClosedException closed) { throw new IOException("共享服务连接中断；请求结果尚未确认。", closed); }
         if (root.GetProperty("jsonrpc").GetString() != "2.0" || root.GetProperty("id").GetString() != id ||
             root.TryGetProperty("result", out var result) == root.TryGetProperty("error", out var error))
             throw new IOException("共享服务回执不匹配，未重发命令。");
@@ -79,5 +74,38 @@ internal sealed class SharedConnection : IDisposable
         return result.Clone();
     }
 
-    public void Dispose() { socket.Abort(); socket.Dispose(); }
+    private async Task ReceiveLoopAsync(CancellationToken token)
+    {
+        Exception? failure = null;
+        try {
+            // Keep ReceiveAsync active while idle so ClientWebSocket can answer
+            // protocol Ping frames. This sends no game queries or command retries.
+            var chunk = new byte[8192];
+            while (!token.IsCancellationRequested) {
+                using var buffer = new MemoryStream();
+                ValueWebSocketReceiveResult received;
+                do {
+                    received = await socket.ReceiveAsync(chunk.AsMemory(), token).ConfigureAwait(false);
+                    if (received.MessageType != WebSocketMessageType.Text)
+                        throw new IOException("共享服务连接中断或返回无效消息；请求结果尚未确认。");
+                    if (buffer.Length + received.Count > 16 * 1024 * 1024)
+                        throw new IOException("共享服务响应超过大小限制。");
+                    buffer.Write(chunk, 0, received.Count);
+                } while (!received.EndOfMessage);
+                using var document = JsonDocument.Parse(buffer.ToArray());
+                await replies.Writer.WriteAsync(document.RootElement.Clone(), token).ConfigureAwait(false);
+            }
+        } catch (Exception error) { failure = error; }
+        finally { replies.Writer.TryComplete(failure); }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+        lifetime.Cancel(); socket.Abort(); socket.Dispose();
+        // The receive task observes cancellation and completes the response queue.
+        if (receiver == null) lifetime.Dispose();
+        else _ = receiver.ContinueWith(_ => lifetime.Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
 }

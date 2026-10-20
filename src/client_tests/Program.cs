@@ -11,11 +11,12 @@ if (args.Length == 2 && args[0] == "--endpoint-start")
     return;
 }
 
-if (args.Length == 2 && args[0] == "--endpoint-probe")
+if (args.Length == 2 && args[0] is ("--endpoint-probe" or "--endpoint-idle"))
 {
     var endpoint = ServerEndpoint.Read(args[1]);
     if (endpoint == null) { Console.WriteLine("{\"found\":false}"); return; }
     using var connection = await SharedConnection.OpenAsync(endpoint.Uri, endpoint.Token, endpoint.Instance, endpoint.Pid);
+    if (args[0] == "--endpoint-idle") await Task.Delay(2500);
     var capabilities = await connection.RequestAsync("capabilities", null);
     Console.WriteLine(JsonSerializer.Serialize(new { found = true, hostPid = connection.HostPid,
         protocol = capabilities.GetProperty("protocol").GetString() }));

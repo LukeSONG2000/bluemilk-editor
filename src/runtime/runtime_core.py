@@ -45,6 +45,7 @@ class Runtime:
         self.session = self.script = None
         self.release_ownership = None
         self.capture = None
+        self.package_leases = {}
         self.inbox_claims = InboxClaims(DATA/'inbox-claims')
         self.calendar_claims = CalendarClaims(DATA/'calendar-claims')
         self.quest_claims = QuestClaims(DATA/'quest-claims')
@@ -65,14 +66,17 @@ class Runtime:
             self.script.on('message', self.message)
             self.script.load()
             from mod_package import inspect_package
-            from mod_store import install, registration
+            from mod_store import install
             package = ASSETS / 'information.bluemilk'
             checked = inspect_package(package)
             if checked['manifest']['id'] != 'bluemilk.information':
                 raise RuntimeError('Bundled information Mod identity mismatch')
-            install(package, checked['sha256'])
-            manifest, entry, digest = registration(checked['sha256'])
-            self.script.exports_sync.modregisterpackage(manifest, entry, digest)
+            installed = install(package, checked['sha256'], bundled=True)
+            if installed.get('suppressed'):
+                if information:
+                    raise RuntimeError('Information Mod was uninstalled; explicitly install it before enabling')
+            else:
+                self.register_package(checked['sha256'])
             if information:
                 self.script.exports_sync.modcommand('enable', {'id':'bluemilk.information'})
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')
@@ -87,6 +91,7 @@ class Runtime:
             if self.session:
                 self.session.detach()
             self.session = self.script = None
+            self._release_packages()
             self.release_ownership()
             self.release_ownership = None
             raise
@@ -117,6 +122,33 @@ class Runtime:
         if not self.script:
             raise RuntimeError('请先连接游戏')
         return getattr(self.script.exports_sync, operation)(*args)
+
+    def register_package(self, sha256):
+        from mod_store import acquire_package
+        if not self.script:
+            raise RuntimeError('Connect before registering a Mod')
+        if sha256 not in self.package_leases:
+            payload, release = acquire_package(sha256)
+            self.package_leases[sha256] = (payload, release)
+        payload, _ = self.package_leases[sha256]
+        # Unknown registration outcomes retain the lease until confirmed cleanup.
+        return self.call_args('modregisterpackage', *payload)
+
+    def uninstall_package(self, sha256):
+        from mod_store import remove
+        if sha256 in self.package_leases:
+            payload, release = self.package_leases[sha256]
+            result = self.call_args('modunregisterpackage', payload[0]['id'], sha256)
+            if not isinstance(result, dict) or result.get('unregistered') is not True:
+                raise RuntimeError('Mod unregister was not confirmed; package retained')
+            release()
+            del self.package_leases[sha256]
+        return remove(sha256)
+
+    def _release_packages(self):
+        for _, release in self.package_leases.values():
+            release()
+        self.package_leases.clear()
 
     def inbox_reward(self, operation, message_id):
         call = lambda op, payload: self.call_args('inboxcommand', op, payload)
@@ -162,4 +194,5 @@ class Runtime:
         if self.release_ownership:
             self.release_ownership()
             self.release_ownership = None
+        self._release_packages()
         return {'disconnected':True}

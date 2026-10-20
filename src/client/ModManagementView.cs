@@ -12,6 +12,7 @@ internal sealed class ModManagementView : StackPanel
     private readonly Button load = new() { Content = "载入", IsEnabled = false };
     private readonly Button enable = new() { Content = "启用", IsEnabled = false };
     private readonly Button disable = new() { Content = "停用并恢复", IsEnabled = false };
+    private readonly Button uninstall = new() { Content = "卸载", IsEnabled = false };
     private readonly TextBlock package = new() { Text = "选择 .bluemilk 文件以检查内容。", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 280 };
@@ -36,7 +37,7 @@ internal sealed class ModManagementView : StackPanel
         Children.Add(new TextBlock { Text = "已安装", FontSize = 20 });
         Children.Add(refresh); Children.Add(list); Children.Add(detail);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        actions.Children.Add(load); actions.Children.Add(enable); actions.Children.Add(disable); Children.Add(actions);
+        actions.Children.Add(load); actions.Children.Add(enable); actions.Children.Add(disable); actions.Children.Add(uninstall); Children.Add(actions);
         Children.Add(new TextBlock { Text = "仅启用可信来源的 Mod。它们在游戏进程中执行；发布者名称和文件摘要不证明作者身份。", TextWrapping = TextWrapping.Wrap });
         choose.Click += async (_, _) => {
             try {
@@ -52,6 +53,7 @@ internal sealed class ModManagementView : StackPanel
         load.Click += async (_, _) => { try { await ChangeAsync("mods-package-register"); } catch { } };
         enable.Click += async (_, _) => { try { await ChangeAsync("mods-enable"); } catch { } };
         disable.Click += async (_, _) => { try { await ChangeAsync("mods-disable"); } catch { } };
+        uninstall.Click += async (_, _) => { try { await ChangeAsync("mods-package-uninstall"); } catch { } };
         list.SelectionChanged += (_, _) => Update();
     }
 
@@ -74,6 +76,7 @@ internal sealed class ModManagementView : StackPanel
         load.IsEnabled = !busy && gameConnected && row != null && native == null;
         enable.IsEnabled = !busy && gameConnected && state == "disabled";
         disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
+        uninstall.IsEnabled = !busy && row != null;
         detail.Text = row == null ? "选择一个 Mod 查看状态。" :
             $"{row.Name}  {row.Version}\n{row.Usage} · {StateName(state)}" +
             (native?.TryGetProperty("error", out var error) == true && error.ValueKind == JsonValueKind.String
@@ -159,15 +162,17 @@ internal sealed class ModManagementView : StackPanel
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
-        if (!gameConnected) throw new InvalidOperationException("请先在概览中连接游戏。");
-        if (operation is not ("mods-package-register" or "mods-enable" or "mods-disable"))
+        if (!gameConnected && operation != "mods-package-uninstall") throw new InvalidOperationException("请先在概览中连接游戏。");
+        if (operation is not ("mods-package-register" or "mods-enable" or "mods-disable" or "mods-package-uninstall"))
             throw new ArgumentException("不支持的 Mod 操作。");
-        if (operation != "mods-package-register" && Runtime(row) == null)
+        if (operation is ("mods-enable" or "mods-disable") && Runtime(row) == null)
             throw new InvalidOperationException("所选版本尚未载入，请刷新状态。");
-        await service.RequestAsync(operation, operation == "mods-package-register"
+        await service.RequestAsync(operation, operation is ("mods-package-register" or "mods-package-uninstall")
             ? (object)new { sha256 = row.Hash } : new { id = row.Id });
         await PopulateAsync(service);
-        status.Title = "操作已确认"; status.Message = detail.Text = $"{row.Name}：{StateName(Runtime(row)?.GetProperty("state").GetString())}";
+        status.Title = "操作已确认"; status.Message = operation == "mods-package-uninstall"
+            ? $"{row.Name} 已卸载。重新安装需要再次选择 Mod 包。"
+            : $"{row.Name}：{StateName(Runtime(row)?.GetProperty("state").GetString())}";
         status.Severity = InfoBarSeverity.Success;
         return true;
     });

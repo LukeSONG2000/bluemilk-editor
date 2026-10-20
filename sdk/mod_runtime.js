@@ -143,7 +143,23 @@ globalThis.BlueMilkMods=(()=>{
    return {stopped:true};
   }finally{busy=false;}
  }
- return {register,registerPackage,command,shutdown};
+ async function unregisterPackage(id,sha256){
+  if(busy)throw Error('Another Mod lifecycle operation is in progress');
+  if(!validId(id)||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256))throw Error('Package identity required');
+  const r=records.get(id);
+  if(!r)return {unregistered:true,alreadyAbsent:true};
+  if(r.packageSha256!==sha256)throw Error('A different package or builtin owns this Mod ID');
+  const dependent=[...records.values()].find(x=>x.manifest.dependencies.includes(id));
+  if(dependent)throw Error('Unregister dependent first: '+dependent.manifest.id);
+  busy=true;
+  try{
+   await disable(r);
+   records.delete(id);
+   return {unregistered:true,alreadyAbsent:false};
+  }finally{busy=false;}
+ }
+ return {register,registerPackage,command,shutdown,unregisterPackage};
 })();
 rpc.exports={...rpc.exports,modcommand:(op,payload)=>BlueMilkMods.command(op,payload),
- modregisterpackage:(manifest,source,sha256)=>BlueMilkMods.registerPackage(manifest,source,sha256)};
+ modregisterpackage:(manifest,source,sha256)=>BlueMilkMods.registerPackage(manifest,source,sha256),
+ modunregisterpackage:(id,sha256)=>BlueMilkMods.unregisterPackage(id,sha256)};

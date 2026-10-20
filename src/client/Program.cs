@@ -192,6 +192,16 @@ public sealed partial class ShellApplication : Application
             await mods.ChangeAsync("mods-disable");
             if (output != null) await File.WriteAllTextAsync(output + ".disabled", "{\"disabled\":true}");
             await Task.Delay(8000);
+            if (Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_UNINSTALL") == "1") {
+                await mods.ChangeAsync("mods-package-uninstall");
+                if (output != null) await File.WriteAllTextAsync(output + ".uninstalled", "{\"uninstalled\":true}");
+                await Task.Delay(8000);
+                await mods.InstallAsync();
+                mods.SelectMod("bluemilk.information");
+                await mods.ChangeAsync("mods-package-register");
+                if (output != null) await File.WriteAllTextAsync(output + ".restored", "{\"restored\":true}");
+                await Task.Delay(8000);
+            }
             await connection.DisconnectAsync();
             if (output != null) await File.WriteAllTextAsync(output, "{\"modLifecycle\":true,\"disconnected\":true}");
         } catch (Exception e) {

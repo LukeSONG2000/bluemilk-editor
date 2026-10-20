@@ -52,5 +52,26 @@ restored rendering after earlier artifacts showed blank client areas. The Mod pa
 was inspected in the normal light theme with no overlap. Release scripts now
 require a channel-specific rebuild and an empty output directory; this does not
 establish the exact cache or binary defect behind the earlier blank windows.
-Battle-mode UI, restart selection, upgrade/uninstall and cross-mode/performance
+Battle-mode UI, restart selection, upgrade and cross-mode/performance
 acceptance remain outstanding.
+
+## Package removal
+
+`mods-package-uninstall` accepts only `{ "sha256": "<installed package hash>" }`.
+The current shared host stops and unregisters its matching package before deleting
+that one managed file. Failed cleanup, a mismatched registered version, registered
+dependents, or unsatisfied installed dependency versions block removal. A store
+failure after unregistering leaves the package installed but no longer registered;
+refresh state before deciding the next action. No automatic retry is performed.
+
+Package registration acquires an OS file lock retained until confirmed unregister
+or disconnect. Other current-version hosts cannot delete or acquire that package
+while its lease is held; process termination releases the lock. Unknown registration
+outcomes retain the lease. Older builds predating leases must be disconnected before
+using removal; this mechanism cannot enforce cooperation by arbitrary old programs.
+
+Removal records a persistent opt-out from bundled auto-installation. Reconnecting
+does not silently reinstall the information Mod. An explicit package install clears
+the opt-out. Requesting information on connect while it is uninstalled fails with a
+reinstall instruction. Uninstall does not touch game files or operation receipts.
+The marker records the Mod ID and removed hash; it is not an enable-on-start profile.
