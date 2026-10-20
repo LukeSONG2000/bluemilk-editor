@@ -62,6 +62,19 @@ class HostTests(unittest.TestCase):
         self.assertEqual(self.released,0)
         self.assertEqual(len(self.host.errors),2)
 
+    def test_completion_receipt_is_persisted_before_waking_owner(self):
+        persist = self.host.persist
+        def checked_persist():
+            self.assertFalse(self.host.done.is_set())
+            persist()
+        self.host.persist = checked_persist
+        failed = {'kind':'visual-probe-complete','cleanup':{'home':False,'errors':['pending']}}
+        self.host.message({'type':'send','payload':failed},None)
+        self.assertTrue(self.host.done.is_set())
+        evidence=json.loads(self.host.evidence.read_text())
+        self.assertEqual(evidence['completion'],failed)
+        self.assertFalse(evidence['cleanupConfirmed'])
+
     def test_packaged_trial_requires_matching_disabled_registry(self):
         self.host.manifest['trialPackageSha256']='a'*64
         self.host.complete=dict(GOOD)

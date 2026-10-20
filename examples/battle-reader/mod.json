@@ -1,0 +1,13 @@
+{
+  "id": "org.example.battle-reader",
+  "name": "Battle snapshot reader",
+  "publisher": "Example author",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": ["battle.information.read"],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}
