@@ -8,7 +8,7 @@ from prepare_captured_trial import prepare, read_capture, read_mode_provenance
 
 def prepare_request(payload, assets, output):
     required = {'battle', 'inventory', 'squadType', 'durationSeconds', 'auto'}
-    if not isinstance(payload, dict) or set(payload) != required:
+    if not isinstance(payload, dict) or (set(payload) - {'control'}) != required:
         raise ValueError('Expected battle, inventory, squadType, durationSeconds and auto')
     if any(not isinstance(payload[k], str) or not Path(payload[k]).is_absolute() for k in ('battle','inventory')):
         raise ValueError('Select explicit absolute battle and inventory capture paths')
@@ -32,6 +32,6 @@ def prepare_request(payload, assets, output):
     prefix = output/('prepared-'+uuid.uuid4().hex)
     result = prepare(payload['battle'], payload['inventory'], None, prefix, payload['squadType'],
                      'visual', payload['durationSeconds'], payload['auto'],
-                     schema_bundle=folder/'schema.json', module_root=folder)
+                     schema_bundle=folder/'schema.json', module_root=folder, control=payload.get('control'))
     return dict(manifest=str(prefix.with_suffix('.json')), prepared=result,
                 started=False, runtimeCompatibilityVerified=False)

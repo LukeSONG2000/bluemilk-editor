@@ -77,7 +77,7 @@ internal sealed class EnemyControlView : StackPanel
 
     private void Update()
     {
-        var ready = connection.CanRefresh && !connection.IsTrialObserver && !connection.IsPreparedTrial && !executing;
+        var ready = connection.CanRefresh && !connection.IsTrialObserver && !executing;
         var choice = (EnemyStrategy)strategy.SelectedIndex;
         strategy.IsEnabled = !executing && (!state.Armed || !state.Manual);
         manual.IsEnabled = !state.Armed;
@@ -90,7 +90,7 @@ internal sealed class EnemyControlView : StackPanel
             EnemyStrategy.RestrictedBasic => state.Targets.Count == 0 ? "进入阵容页或战斗后，从当前我方单位中选择允许攻击的目标。" : "勾选允许攻击的我方单位；仍遵循原版合法目标限制。",
             _ => "敌方回合使用原技能栏与选择器操作。需在启用前选择此模式，本场内不可切换手动模式。"
         };
-        arm.IsEnabled = ready && state.CanArm(scope.SelectedIndex == 1);
+        arm.IsEnabled = ready && !connection.IsPreparedTrial && state.CanArm(scope.SelectedIndex == 1);
         apply.IsEnabled = ready && state.Armed && !state.Manual;
         release.IsEnabled = ready && state.Armed;
     }

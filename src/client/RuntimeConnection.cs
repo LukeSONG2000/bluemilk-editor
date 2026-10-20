@@ -67,7 +67,7 @@ internal sealed class RuntimeConnection
         {
             if (closed || closeTask != null || uncertain) throw new InvalidOperationException("连接状态尚未确认，请先断开并恢复。");
             // Explicitly exposed client operations; battle entry remains separate.
-            if (prepared ? operation is not ("capabilities" or "prepare" or "start" or "snapshot" or "status")
+            if (prepared ? operation is not ("capabilities" or "prepare" or "start" or "snapshot" or "status" or "control")
                 : operation is not ("capabilities" or "connect" or "snapshot" or "trial-connect" or "arm" or "configure" or "disarm"
                 or "capture-start" or "capture-status" or "capture-stop" or "mods-list" or "mods-enable" or "mods-disable"
                 or "mods-package-inspect" or "mods-package-install" or "mods-package-list" or "mods-package-register"

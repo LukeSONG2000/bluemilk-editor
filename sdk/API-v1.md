@@ -179,4 +179,50 @@ Mod 的命令处理器不得等待加载器自身的 shutdown，否则会形成�
 实际目标属于当时原版合法候选且符合指定目标限制；结束后恢复酒馆、清除控制并释放试玩资源，
 战斗开始/结算服务调用均为零。该历史捕获缺少新版模式旁证，因此此结果只验证控制包和生命周期，
 不作为通用战斗回放保真、其他模式、敌方手动 UI 或性能验收。当前通过隔离验证脚本组合加载，
-普通试玩页面与共享 CLI 的正式 Mod 接入仍待完成。
+试玩准备页和独立 CLI 的显式包接入已实现；试玩仍使用互斥的私人 worker，尚未迁入长期 app-server 会话。
+
+
+## Prepared trial control (v1)
+
+`bluemilk --prepared-jsonl` exposes the same private JSONL protocol as the client's
+prepared worker: `capabilities`, `prepare`, `start`, `snapshot`, `status`, `control`,
+`disconnect`. Keep stdin open while observing a trial; EOF requests cleanup and
+waits for confirmed restoration. This worker shares the native session lock with
+app-server; disconnect a normal game connection first. It is not yet hosted by
+the persistent app-server.
+
+`prepare` retains the existing absolute `battle`, `inventory`, `squadType`,
+`durationSeconds`, `auto` fields and optional `control`:
+
+```json
+{"package":"C:/Mods/battle-control.bluemilk","sha256":"<inspected full package SHA256>","policy":{"enabled":false,"oneClickTaunt":true,"allowedTargets":[],"manualUI":false}}
+```
+
+Explicit selection authorizes that trusted in-process code for this trial.
+The adapter currently accepts the standalone `bluemilk.battle-control` package,
+validates one byte snapshot, embeds its exact entry, and records the package hash.
+No package selection means no control Mod. Manual UI and policy control are
+mutually exclusive; packaged control cannot combine with the legacy enemy gate
+or AI priority/prediction experiments. Original capture-mode provenance remains
+required by `prepare`; do not create missing sidecars by guessing a mode.
+
+After `start` with an explicit prepared `manifest`, use:
+
+```json
+{"id":"status","operation":"control","payload":{"command":"status","payload":{}}}
+{"id":"disable","operation":"control","payload":{"command":"disable","payload":{}}}
+```
+
+`configure` accepts the original enabled/oneClickTaunt/allowedTargets policy;
+`enemy-input` accepts the existing operation/request pair and original turn token.
+These commands require the exact active trial state/context. No late `arm` or
+re-enable is exposed. `snapshot` includes the same `arena` shape used by the human
+battle-assistant page. The UI preparation form can select a package plus one-click
+taunt or enemy manual UI; the existing battle-assistant page can change policy or
+release control. Enemy manual UI is connected but not yet battle-accepted here.
+
+Cleanup drains accepted Mod commands before leaving and releases the offline guard
+and fixture GC roots only after Mod cleanup succeeds. Unconfirmed cleanup retains
+the worker/session; no force-detach or automatic replay is provided. An unrecoverable
+native cleanup failure still needs runtime recovery/restart, not a success receipt.
+The prepared-trial capability itself is not yet an independent official Mod.

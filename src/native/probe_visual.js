@@ -9,7 +9,7 @@
  if(typeof options.autoClick!=='boolean'||typeof options.autoAfterClick!=='boolean'||!Number.isFinite(options.maxDurationMs)||options.maxDurationMs<=0)throw Error('Invalid visual probe options');
  if(options.capturePath!==null&&typeof options.capturePath!=='string')throw Error('capturePath must be a string or null');
  const hooks=[],cleanup={home:false,exitedOwnedStates:0,guardRestored:false,gcReleased:false,errors:[]};
- let f=null,guard=null,entered=null,ownedCampaign=null,exitedOwnBattle=false,campaignExpected=false,foreignTransition=false,returningHome=false;
+ let f=null,guard=null,entryState=null,entered=null,ownedCampaign=null,exitedOwnBattle=false,campaignExpected=false,foreignTransition=false,returningHome=false;
  let serviceCalls=0,last=-1,clicked=false,readyAt=0,error=null,lastSnapshot=null,terminalObserved=false;
  let enemyGate=null,heldToken=null,heldAt=0;
  const capture={path:options.capturePath,requested:false,verified:false,error:null,beforeStamp:null};
@@ -62,6 +62,7 @@
  try{
   await R.runOnMainThreadOnce(()=>{
    if(globalThis.readLoadingProfile)send({kind:'trial-loading-profile',phase:'before-entry',profile:readLoadingProfile()});
+   entryState=current();
    guard=installOfflineSocketGuard(); // covers fixture, entry, polling and exit
    f=createOriginalFixture(Object.assign({},options.fixture||{},{flags:6}));send(originalFixtureDiagnostics(f));
    if(options.aiPriorityOrder)globalThis.trialAIPriority=installOriginalAIPriority(f.context,options.aiPriorityOrder);
@@ -103,6 +104,12 @@
     },
     onLeave(result){if(this.campaign&&!result.isNull())ownedCampaign=result;}
    },['System.Type','IStateTransitionData','System.Boolean']);
+  });
+  // Arm the shared package outside the main-thread callback: its provider
+  // schedules main-thread work and must finish before the original entry.
+  if(globalThis.trialControlPackage)await prepareTrialControl(f);
+  await R.runOnMainThreadOnce(()=>{
+   if(foreignTransition||!current().equals(entryState))throw Error('Original state changed before trial entry');
    const result=enterType('BattleGameState',f.data);if(!result.isNull())entered=result;
    globalThis.visualProbe={fixture:f,entered,enemyGate:options.enemyControl?enemyGate:null};
   });
@@ -182,6 +189,12 @@
   }
  }catch(exception){error=String(exception);send({kind:'original-visual-error',error,stack:exception.stack||null});}
  finally{
+  if(globalThis.visualProbe)visualProbe.stopping=true;
+  let modsClean=true;
+  if(globalThis.trialControlPackage)try{
+   await BlueMilkMods.shutdown();
+   send({kind:'trial-mod-cleaned',mods:await BlueMilkMods.command('list')});
+  }catch(exception){modsClean=false;cleanup.errors.push('Mod cleanup: '+String(exception));}
   try{globalThis.FrameProfile?.finish();}
   catch(exception){cleanup.errors.push('frame profile cleanup: '+String(exception));}
   // The normal captured-trial path owns the same information display as the
@@ -232,9 +245,9 @@
    try{if(globalThis.trialAITrace){trialAITrace.stop();send(trialAITrace.snapshot());}}
    catch(exception){cleanup.errors.push('AI trace cleanup: '+String(exception));}
    for(const listener of hooks)try{listener.detach();}catch(exception){cleanup.errors.push('detach: '+String(exception));}
-   try{if(guard){guard.restore();cleanup.guardRestored=true;}}catch(exception){cleanup.errors.push('guard restore: '+String(exception));}
+   try{if(guard&&modsClean){guard.restore();cleanup.guardRestored=true;}}catch(exception){cleanup.errors.push('guard restore: '+String(exception));}
    // No release while a live original state may still depend on fixture objects.
-   if(cleanup.home)try{
+   if(cleanup.home&&modsClean)try{
     await R.runOnMainThreadOnce(()=>{if(f?.restoreDefinitions){f.restoreDefinitions();cleanup.definitionsRestored=true;}});
     if(globalThis.readLoadingProfile)await R.runOnMainThreadOnce(()=>send({kind:'trial-loading-profile',phase:'after-home',profile:readLoadingProfile()}));
     R.releaseAll();cleanup.gcReleased=true;

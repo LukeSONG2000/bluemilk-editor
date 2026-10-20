@@ -154,12 +154,17 @@ internal sealed class ConnectionView : StackPanel
     {
         if (operation is not ("arm" or "configure" or "disarm"))
             throw new ArgumentException("不支持的控制操作。");
-        if (!CanRefresh || runtime == null || IsTrialObserver || IsPreparedTrial)
+        if (!CanRefresh || runtime == null || IsTrialObserver)
             throw new InvalidOperationException("请先直接连接游戏；试玩观察不允许修改控制。");
         busy = true; Buttons();
         try
         {
-            await runtime.RequestAsync(operation, payload);
+            if (IsPreparedTrial)
+            {
+                if (operation == "arm") throw new InvalidOperationException("试玩控制必须在生成清单时选择 Mod 包。");
+                await runtime.RequestAsync("control", new { command = operation == "disarm" ? "disable" : "configure", payload = payload ?? new { } });
+            }
+            else await runtime.RequestAsync(operation, payload);
             var snapshot = await runtime.RequestAsync("snapshot");
             ShowSnapshot(snapshot);
             return snapshot;

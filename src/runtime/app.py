@@ -234,6 +234,7 @@ def main():
     parser=argparse.ArgumentParser()
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--self-test');mode.add_argument('--probe');mode.add_argument('--ui-smoke',action='store_true');mode.add_argument('--jsonl',action='store_true')
+    mode.add_argument('--prepared-jsonl', action='store_true', help='Own an isolated prepared trial through JSONL')
     mode.add_argument('--app-server', action='store_true', help='Run the persistent shared service')
     mode.add_argument('--mastery-compare',nargs=2,metavar=('BEFORE','AFTER'),help='Compare two saved native observations offline')
     parser.add_argument('--unit-id',help='Exact unit instance for --mastery-compare')
@@ -243,6 +244,13 @@ def main():
         parser.error('--server requires --jsonl')
     if bool(args.mastery_compare)!=bool(args.unit_id):
         parser.error('--mastery-compare and --unit-id must be supplied together')
+    if args.prepared_jsonl:
+        from prepared_protocol import run_prepared
+        if sys.stdin is None or sys.stdout is None:
+            raise RuntimeError('Use bluemilk.exe --prepared-jsonl with stdin/stdout')
+        sys.stdin.reconfigure(encoding='utf-8');sys.stdout.reconfigure(encoding='utf-8')
+        run_prepared(sys.stdin, sys.stdout)
+        return
     if args.app_server:
         import asyncio
         from app_server import run_host
