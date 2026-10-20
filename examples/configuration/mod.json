@@ -9,5 +9,14 @@
   "presentations": ["desktop", "cli"],
   "dependencies": [],
   "conflicts": [],
-  "entry": "main.js"
+  "entry": "main.js",
+  "configuration": {
+    "version": 1,
+    "fields": [
+      {"key": "label", "label": "显示名称", "type": "string", "default": "Hello BlueMilk", "maxLength": 80},
+      {"key": "showDetails", "label": "显示详细信息", "type": "boolean", "default": true},
+      {"key": "rows", "label": "显示行数", "type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+      {"key": "style", "label": "显示密度", "type": "string", "default": "标准", "maxLength": 16, "options": ["精简", "标准", "详细"]}
+    ]
+  }
 }

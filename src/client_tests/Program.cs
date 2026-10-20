@@ -13,6 +13,7 @@ if (args.Length == 2 && args[0] == "--endpoint-start")
 
 if (args.Length == 2 && args[0] is ("--endpoint-probe" or "--endpoint-idle"))
 {
+    try {
     var endpoint = ServerEndpoint.Read(args[1]);
     if (endpoint == null) { Console.WriteLine("{\"found\":false}"); return; }
     using var connection = await SharedConnection.OpenAsync(endpoint.Uri, endpoint.Token, endpoint.Instance, endpoint.Pid);
@@ -20,6 +21,12 @@ if (args.Length == 2 && args[0] is ("--endpoint-probe" or "--endpoint-idle"))
     var capabilities = await connection.RequestAsync("capabilities", null);
     Console.WriteLine(JsonSerializer.Serialize(new { found = true, hostPid = connection.HostPid,
         protocol = capabilities.GetProperty("protocol").GetString() }));
+    } catch (Exception error) {
+        // Invalid endpoint fixtures are expected errors, not application crashes.
+        // Avoid invoking Windows crash reporting and never print credentials.
+        Console.Error.WriteLine(error.GetType().Name);
+        Environment.ExitCode = 1;
+    }
     return;
 }
 
