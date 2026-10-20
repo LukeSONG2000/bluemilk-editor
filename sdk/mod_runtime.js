@@ -51,7 +51,29 @@ globalThis.BlueMilkMods=(()=>{
    const module={exports:{}};
    execute(module,module.exports);
    if(typeof module.exports!=='function')throw Error('Mod entry must export a lifecycle factory');
-   return module.exports();
+   // Capability declarations describe supported APIs, not a security boundary.
+   // Retain an SDK-owned handle even if the package throws after installation.
+   let owned=null,creating=true;
+   const sdk=Object.freeze({
+    version:1,
+    mod:Object.freeze({id:manifest.id,version:manifest.version}),
+    battle:Object.freeze({information:Object.freeze({
+     install(){
+      if(!creating)throw Error('Acquire information UI during the Mod factory call');
+      if(!manifest.capabilities.includes('battle.information.ui'))throw Error('Missing capability: battle.information.ui');
+      if(owned)throw Error('Information UI already acquired by this Mod');
+      if(typeof installBattleInfo!=='function')throw Error('Information UI provider unavailable');
+      owned=installBattleInfo();
+      records.get(manifest.id).instance=owned;
+      return owned;
+     }
+    })})
+   });
+   try{
+    const handle=module.exports(sdk);
+    if(owned&&handle!==owned)throw Error('Return the acquired information lifecycle handle');
+    return handle;
+   }finally{creating=false;}
   });
   const record=records.get(manifest.id);record.packageSha256=sha256;
   return view(record);

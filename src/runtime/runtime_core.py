@@ -18,7 +18,7 @@ EXPECTED = '12cc254525a58aedea122a2967d0476da05b98ef0c219dc18cfc0b7207538db6'
 MODULES = ['runtime_api.js', 'unity_scene_api.js', 'battle_status_reader.js',
            'battle_attributes_reader.js', 'battle_input.js', 'runtime_observer.js',
            'enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js', 'calendar_bridge.js',
-           'battle_info_ui.js', 'mod_runtime.js', 'official_information_mod.js']
+           'battle_info_ui.js', 'mod_runtime.js']
 def find_game():
     games = []
     for p in psutil.process_iter(['pid','name','exe','cmdline']):
@@ -64,6 +64,15 @@ class Runtime:
             self.script = self.session.create_script(source)
             self.script.on('message', self.message)
             self.script.load()
+            from mod_package import inspect_package
+            from mod_store import install, registration
+            package = ASSETS / 'information.bluemilk'
+            checked = inspect_package(package)
+            if checked['manifest']['id'] != 'bluemilk.information':
+                raise RuntimeError('Bundled information Mod identity mismatch')
+            install(package, checked['sha256'])
+            manifest, entry, digest = registration(checked['sha256'])
+            self.script.exports_sync.modregisterpackage(manifest, entry, digest)
             if information:
                 self.script.exports_sync.modcommand('enable', {'id':'bluemilk.information'})
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')

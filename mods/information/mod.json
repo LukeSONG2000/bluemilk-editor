@@ -1,0 +1,13 @@
+{
+  "id": "bluemilk.information",
+  "name": "信息拓展",
+  "publisher": "BlueMilk project",
+  "version": "0.1.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": ["battle.information.read", "battle.information.ui"],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}

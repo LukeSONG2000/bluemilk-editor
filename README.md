@@ -86,7 +86,8 @@ Node 仅用于隔离生命周期测试。该示例不读写游戏，不创建钩
 打包器生成 `packageVersion:1` 和 `files`。检查器拒绝路径穿越、重复路径、
 Windows 路径别名、符号链接、超限内容、重复 JSON 键和哈希不符。
 
-入口通过 `module.exports` 导出同步工厂，返回 `ready` Promise、`status()`、`stop()`。
+入口通过 `module.exports` 导出接收 `sdk` 的同步工厂，返回含 `ready` Promise、`status()`、`stop()` 的句柄。
+首个已实现接口及边界见 [SDK v1](sdk/API-v1.md)。`mods/information` 是通过同一包格式安装的项目信息 Mod。
 注册只编译；显式启用后执行入口。停用必须确认 `lifecycle: "stopped"`，
 否则保留失败状态，不宣称恢复成功。当前不支持 require/import 多模块解析。
 
