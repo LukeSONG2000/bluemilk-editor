@@ -12,6 +12,9 @@ RUNTIME = ROOT / "src/runtime"
 sys.path.insert(0, str(RUNTIME))
 from runtime_core import MODULES
 from protobuf_defaults import read_schema_bundle
+from mod_author import pack
+from mod_package import inspect_package
+import tempfile
 
 TRIAL = [
     "runtime_api.js", "unity_scene_api.js", "offline_socket_guard.js",
@@ -55,7 +58,14 @@ def prepare(names_path, schema_path):
             shutil.copyfile(native / name, folder / name)
     (assets / "names.json").write_bytes(names_bytes)
     (trial / "schema.json").write_bytes(schema_bytes)
-    manifest(assets, modules + ["names.json"])
+    # Build through the same public package format used by third-party authors.
+    (ROOT / "logs").mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=ROOT / "logs") as temporary:
+        package = Path(temporary) / "information.bluemilk"
+        pack(ROOT / "mods/information", package)
+        inspect_package(package)
+        shutil.copyfile(package, assets / "information.bluemilk")
+    manifest(assets, modules + ["names.json", "information.bluemilk"])
     manifest(trial, TRIAL + ["schema.json"])
     client_data = ROOT / "src/assets"
     client_data.mkdir(exist_ok=True)
