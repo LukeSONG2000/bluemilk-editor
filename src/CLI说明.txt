@@ -1,0 +1,134 @@
+bluemilk.exe --jsonl
+
+共享 app-server（自动发现及启动服务）：
+bluemilk.exe --jsonl --server auto
+auto读取当前用户的服务登记并校验PID、创建时间与服务实例；令牌由Windows DPAPI解密。
+没有运行中的服务会自动启动；等待最多25秒，超时不强杀服务、不重放游戏操作。默认登记位于%USERPROFILE%/.bluemilk/server。
+使用用户目录是为了避免客户端或agent所在MSIX包的AppData重定向把服务登记隔离。
+BLUEMILK_SERVER_DIRECTORY可指定同一登记目录，供隔离测试或自定义配置使用。
+也可以手动指定端点：
+bluemilk.exe --jsonl --server ws://127.0.0.1:PORT/rpc
+通过环境变量 BLUEMILK_SERVER_TOKEN 提供该服务的会话令牌，不放在命令行或日志中。
+此模式复用服务持有的原运行时。EOF只关闭当前CLI连接，不卸载Mod、不断开游戏；
+显式disconnect会影响连接同一服务的所有入口。服务当前仅监听本机，不接受远程地址。
+CLI不会自动重连或重发。返回outcome=unknown/retryBlocked=true时，先查询原操作持久回执；
+不能在另一个CLI进程中把相同id当作防重保证。服务实例改变后不得重放旧操作。
+同一CLI会话内重复id和相同参数返回缓存结果；参数不同会拒绝。每次新查询使用新id。
+当前服务会话账本上限4096条，满后拒绝新操作；尚未实现长期运行的持久账本回收。
+随包 runtime/SWGoH-Runtime.exe --app-server 可启动服务；不指定环境令牌时自动生成并加密登记。
+启动输出一行server-ready（uri/instance，不含令牌）；服务不会因启动方stdin关闭而退出。
+关闭服务使用JSON-RPC server.shutdown，params为{"instance":"启动时返回的instance"}；
+成功回复stopped=true后监听关闭，原运行时清理失败则服务保留。不要以结束进程代替清理。
+WinUI自动发现同一登记目录，也保留显式BLUEMILK_SERVER_URL与BLUEMILK_SERVER_TOKEN连接。
+共享连接关闭窗口只脱离。WinUI普通连接与CLI --server auto均会启动或复用共享服务；试玩保持独立生命周期。
+下方不带--server的CLI用法仍为独立会话模式。历史回执目录不随端点目录迁移。
+
+离线精通观测比较（无需启动游戏，不连接游戏）：
+bluemilk.exe --mastery-compare "before.json" "after.json" --unit-id "private-demo-1-SUPREMELEADERKYLOREN"
+输入须为新版 demo_cli attributes 保存的同一私人对局、同一单位实例观测，含 observationIdentity 与 sessionKey。
+输出区分精通变化、实际属性变化、原精通计算输入项变化。finalMasteryAttributedChange=null / attributionComplete=false 表示尚未完成最终独立贡献归因；相等的差值也不构成因果证明。
+缺少身份的旧快照、跨对局、时间倒序及重复实例会拒绝。此命令独立输出一份 JSON，成功 exit 0，失败输出 error 并 exit 1；不能与 --jsonl 同用。
+
+独立命令行程序，内置Python/Frida，无需安装Node或Python。原游戏须已运行。
+保持一个进程，通过UTF-8 stdin每行发送一个JSON对象，stdout每行返回一个JSON对象。
+每条请求带id；回复以相同id关联。不会自动重试操作。
+
+示例（依次发送并读取回复）：
+{"id":1,"operation":"capabilities"}
+{"id":2,"operation":"connect","payload":{"information":true}}
+{"id":3,"operation":"snapshot"}
+{"id":4,"operation":"inventory-characters"}
+再次snapshot确认state为MasterInventoryGameState且inventory.ready=true后：
+{"id":5,"operation":"inventory-list"}
+{"id":6,"operation":"inventory-home"}
+再次snapshot确认HomeBaseGameState后：
+{"id":7,"operation":"disconnect"}
+
+connect默认information=false；true开启游戏内信息扩展。与GUI/其他CLI共用排他锁，已有连接时拒绝接管。
+关闭stdin（EOF）会解除本连接的控制并断开；保持控制期间必须保持CLI进程存活。
+原按钮调用回执不等于完成导航或技能结算，应观察后续snapshot。战斗请求必须使用当前input.token及原候选index/targetId。
+敌方arm/configure/disarm与GUI使用相同控制器；arm仅针对下一场，不负责进入战斗或消耗次数。
+当前白名单以capabilities输出为准。领取仅接入下述单封奖励邮件，未接入任务/日历领取、购买、扫荡及私人试玩启动。
+SWGoH-Tool.exe仍为原GUI入口。bluemilk.exe --jsonl进入协议模式；不带参数显示命令帮助，不启动GUI。
+
+敌方手动输入（保持同一CLI连接）：
+进入战斗前启用下一场小队手动控制：
+{"id":10,"operation":"arm","payload":{"scope":"all","combatType":0,"manualUI":true,"enabled":false,"oneClickTaunt":false,"allowedTargets":[]}}
+{"id":11,"operation":"enemy-status"}
+返回input.pending=true才是被本连接持有的敌方回合；从input读取token、abilities与targets。
+enemy-ability：payload包含当前token、原abilities条目的moveType/index。
+enemy-basic / enemy-cancel / enemy-resume：payload包含当前token。
+enemy-target：payload包含当前token、原targets候选targetId。
+enemy-unit：payload包含当前token、原selectionCandidates候选targetId（含盟友或增援选择）。
+enemy-button / enemy-tap：通过已显示的原敌方技能栏/目标点击适配器提交；仍使用原token与索引/targetId。
+敌方终极技能从abilities中isUltimate=true的原条目选择，通过enemy-ability提交，不以按钮序号代替原moveType/index。
+新回合、新目标或选择阶段变更后重新读取；不缓存旧token，也不自动重发失败请求。
+退出控制使用disarm，退出进程前disconnect或关闭stdin。CLI不会自动进入真实战斗或消耗次数。
+
+被动捕获下一场原战斗：connect后发送capture-start（无payload）。
+capture-status返回active、capture、modeProvenance、errors；capture-stop停止监听并释放保留对象，EOF也会清理。
+仅监听自然收到的BattleData，不打开关卡、不发起线上请求。不捕获账号认证或InventoryDelta响应。
+输出位于%LOCALAPPDATA%/SWGoH-Tool/captures，随机新文件名；包含.pb、.pb.json，以及关联成功后的.pb.mode.json。
+模式关联必须是同一个原BattleDataDO对象，文件以captureId/SHA256绑定。未知/未完成关联不会推测模式。
+没有自然战斗时capture=null是正常等待，不代表捕获成功。模式记录完整也不等于该模式已可试玩；当前回放构造器仍只支持PVE。
+
+原单位状态面板（替代长按）：
+battle-inspect：payload为{单位ID}，准确格式见下一行，ID取当前snapshot，不使用英雄baseId。
+{"id":20,"operation":"battle-inspect","payload":{"unitId":"当前单位实例ID"}}
+{"id":21,"operation":"battle-inspect-close"}
+返回transitionConfirmed才表示原面板已显示/关闭；非战斗页面、失效单位和不属于当前战斗的单位拒绝。
+
+已有私人试玩的命令邮箱（不二次注入）：
+{"id":30,"operation":"trial-connect","payload":{"directory":"C:/BlueMilkCaptures","pid":26444}}
+目录和PID须填写当前私人宿主实际值。仅支持snapshot、battle-inspect、battle-inspect-close、disconnect；仍需既有私人宿主运行，不包含便携启动试玩。
+快照保留宿主原结构，单位实例ID为units[].unitId。命令返回包含原请求id及result。断开或EOF只关闭邮箱客户端，不停止私人战斗、不释放宿主连接锁；战斗仍按宿主原期限退出。先disconnect才能切换到普通connect。超时为结果未知，不自动重发。
+
+普通连接的snapshot默认detailScope=selected：全队身份/技能/输入仍保留，仅当前原选中单位的attributes/status详细读取；其他单位为null、detailsRead=false，切换选中目标后下一快照读取新目标。需要全队详情时发送：
+{"id":40,"operation":"snapshot","payload":{"detailScope":"all"}}
+全队详细读取明显增加主线程耗时，避免高频调用。私人邮箱snapshot保留宿主配置，不接受改变宿主读取范围。
+
+原生菜单查询/导航：
+inbox-open / inbox-list / inbox-home；inbox-select需要payload {messageId:当前列表ID}。
+objectives-open / objectives-list / objectives-daily / objectives-achievements / objectives-home。
+events-enter 从酒馆调用原活动入口；events-challenges 切换原挑战页签。snapshot.events.tab=4 且 listActive=true 后使用 events-list。当前列表读取仅支持挑战页签，其他页签明确 listSupported=false。
+events-list / events-missions / events-missions-back / events-back；events-open需要payload {eventId,instanceId}（均来自当前列表）。events-open选择列表内活动；events-missions-back回列表，events-back返回酒馆。expectedState/expectedTab仅为派发回执，必须轮询snapshot确认，不自动重发。
+
+单封奖励邮件领取：先inbox-list获取ID，再inbox-select并确认selectedDetail为该邮件、rewardView/active/enabled均为true，且有奖励、无自定义动作。
+{"id":50,"operation":"inbox-claim","payload":{"messageId":"当前奖励邮件ID"}}
+{"id":51,"operation":"inbox-claim-status","payload":{"messageId":"相同邮件ID"}}
+claim先在%LOCALAPPDATA%/SWGoH-Tool/inbox-claims落盘，再调用原奖励按钮。相同邮件ID跨重启禁止再次提交；不提供强制重试/清记录接口。出错或超时按结果未知处理。
+同一连接内轮询claim-status取得原成功/失败回调及支持的库存增量。claimDispatched不等于到账；native-success-callback与rewardBalanceReconciled是两类独立证据，未支持的奖励类型不声称已核对库存。查询会保存最新回执。
+断开后仍可用claim-status读取已保存回执，liveTrackingAvailable=false；不会凭新连接的小数字trackingId关联旧领取。结果未明时不要自动重发，也不要删除记录重试。
+本版本已验证原页面查询及无可领取邮件时拒绝；新便携领取入口的实际到账验收需有符合条件的奖励邮件。
+
+PVE战前配置（原角色阵容）：
+events-mission-select payload {eventId,missionId}来自当前events-missions；只进入原战前页，不开战。原入口拒绝锁定、冷却、次数耗尽或货币收费关卡。
+snapshot.prebattle.phase区分support（援军选择）、squad（阵容）、loading；ready=true后使用prebattle-roster查询squadCells和原过滤后的roster，prebattle-start-quote仅读原费用按钮。
+prebattle-remove / prebattle-add payload {eventId,missionId,unitId,cellIndex}均取当前快照；unitId是实例ID。移除要求当前格内正是该单位；加入要求原编辑器当前空格、单位在候选中且尚未入队。不绕过必选/锁定/原资格规则。若有missionIdentity请同时原样传入；普通战役eventId=null时必须携带完整{CampaignID,MapID,NodeID,MissionID,Difficulty}且MissionID匹配。
+每次修改后轮询snapshot.prebattle.squadCells确认；editDispatched只表示已调用原回调，切勿自动重发。prebattle-back返回原活动或战役页。
+在support阶段用prebattle-supports读原候选；prebattle-support-select payload {eventId,missionId,playerId,missionIdentity?}选择原援军，轮询确认selectedSupport和ready。
+当前封装不提供prebattle-start，不发起真实战斗；上述角色阵容入口不代表装备或mod配置已接入。活动角色阵容移除/加入/恢复和原援军选择均已在便携EXE实机验证；援军玩家ID与后续原状态一致。
+除上述身份字段外不接受payload。expectedState仅表示原导航已派发，须snapshot确认state及相应ready/tab后再查询或继续操作，不自动重试导航。
+这些新增命令不包含领奖/购买/刷新次数/开战/扫荡；私人邮箱transport不支持菜单操作。
+
+舰队PVE战前配置：snapshot.prebattle.combatType=1。prebattle-remove/add支持原首发舰DEFAULT=2与增援REINFORCEMENT=4，仍拒绝必选/锁定槽位，不把主力舰作为普通单位移除。角色combatType=0保留LEADER=0/DEFAULT=2。
+主力舰独立选择器：prebattle-commander-open/select使用与prebattle-add相同的任务身份+cellIndex+unitId格式；open中的unitId必须为当前主舰，select为原候选主舰。prebattle-commander-list/close无payload。snapshot.prebattle.phase=commander表示选择器显示，选择/关闭后轮询squad及实际主舰ID。原单主舰限制会拒绝open，锁定候选也拒绝select；不会绕过原规则。
+已验证舰队挑战中首发/增援移除、加入、完整恢复以及主舰限制拒绝。主舰自由选择/切换尚未在允许换舰的原页面验收；接口可见不代表该流程已验证。舰队返回可能直接回挑战列表，应读取events.missionsActive决定是否调用events-missions-back。
+
+日历（免费当日奖励，完整库存增量核验仍待验收）：
+calendar-open仅从酒馆派发原入口；calendar-visibility读取showing/active/openingPending/readable/showingInfo/bulkClaiming。openingPending=true时禁止重复打开，readable=true后才查询calendar-list。
+calendar-list返回calendars及selected；calendar-select payload {calendarId}选择当前列表中的日历。每次选择后重新读取selected，不沿用旧奖励索引。
+{"id":60,"operation":"calendar-claim","payload":{"calendarId":"当前selected.id","rewardIndex":0,"lastClaimed":"当前selected.lastClaimed"}}
+rewardIndex必须取当前selected.rewardIndex，上例0仅为格式示例。仅允许原按钮可用、未领取、非catch-up的当前免费奖励。calendar-close调用原返回按钮；原版可能在关闭时才结算已排队领取。
+{"id":61,"operation":"calendar-claim-status","payload":{"calendarId":"与领取相同","rewardIndex":0,"lastClaimed":"与领取相同"}}
+身份字段必须与提交完全相同。派发前在%LOCALAPPDATA%/SWGoH-Tool/calendar-claims独占保存持久回执；异常或重连后不重复提交，也不删除记录重试。
+claimDispatched或navigationDispatched不代表到账或页面已就绪。同一连接查询nativeStatus中的rewardBalanceReconciled核验原库存变化；跨重连只能读取已保存证据，不伪造新的确认。
+便携EXE已实测打开、原免费领取按钮派发、关闭后原数据sourceClaimed=true。该次领取遇到AppData重定向导致回执替换失败，旧回执保留结果未知并禁止重试；未取得完整余额增量证据，不能当作库存到账核验通过。当前版本已修复真实目录解析，仍需下一次可领取奖励验收完整链路。没有补领购买或付费刷新接口。
+
+任务奖励（新接口，真实领取及库存到账待验收）：
+objectives-list每日页返回原dailyResetTimestamp字符串。领取与状态查询均要求完整payload：
+{"id":70,"operation":"objectives-claim","payload":{"questId":"当前任务ID","tab":2,"subTab":1,"dailyResetTimestamp":"列表中的原始值"}}
+objectives-claim-status使用完全相同payload；成就页tab=3/subTab=0/dailyResetTimestamp=null。
+派发前持久保存到%LOCALAPPDATA%/SWGoH-Tool/quest-claims，同一身份跨重启不重复提交；原回调之前再次验证周期。不得删除未知回执重试。
+同一连接查询可关联原成功/失败回调，跨重连只读取已保存证据。rewardConfirmed始终false：本接口尚未实现任务奖励库存增量核验。不得把native-success-callback当作余额到账证明。
+已验证每日任务列表原重置时间及Home往返；持久回执、周期变更拒绝、未知结果拒绝重发有自动化测试。跨日实际刷新及真实领取成功仍待验收。私人试玩连接不提供任务奖励操作。
