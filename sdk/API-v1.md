@@ -256,8 +256,14 @@ configuration revision unchanged; otherwise prepare again. While owned, its
 OS lease blocks configuration edits, selection changes and uninstall. Cleanup
 failure retains the lease until confirmed disconnect. Legacy standalone
 artifacts without `managedTrialPackage` retain their explicit embedded version;
-they do not acquire a shared-store lease. Explicit control package selection is
-still separate and is not yet migrated to this managed snapshot mechanism.
+they do not acquire a shared-store lease. For managed control, pass `control: {policy: {...}}` to `trial-prepare`:
+this selects the installed profile version of `bluemilk.battle-control`, or
+bundled discovery if no version is selected, respecting uninstall suppression.
+The same policy fields and original legality checks apply. The generated
+`managedControlPackage` pins its hash and configuration revision. Start acquires
+both leases atomically; any failure releases already acquired leases. Confirmed
+cleanup releases both. An explicit `control: {package, sha256, policy}` still
+selects standalone executable content and does not claim a store lease.
 
 The original engine first stops its owned control resource without recursively
 entering the registry lock. After engine cleanup resolves, the bootstrap shuts

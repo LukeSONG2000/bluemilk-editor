@@ -77,6 +77,40 @@ class TrialStoreTests(unittest.TestCase):
         self.assertTrue(service.disconnect()['disconnected'])
         release.assert_called_once()
 
+    def test_two_packages_rollback_and_hold_until_release(self):
+        root = Path(self.temp.name)/'store'
+        trial_sha = self.package()
+        trial = snapshot(self.path, trial_sha, root)
+        self.manifest.update(id='bluemilk.battle-control', capabilities=['battle.control'])
+        test_mod_package.PackageTests.write(self)
+        control_sha = inspect_package(self.path)['sha256']
+        control = snapshot(self.path, control_sha, root,
+                           identity='bluemilk.battle-control', capability='battle.control')
+        manifest = {'trialPackageSha256': trial_sha, 'controlPackageSha256': control_sha}
+        for key, record in [('managedTrialPackage', trial), ('managedControlPackage', control)]:
+            manifest[key] = {k: record[k] for k in ('sha256', 'configurationRevision')}
+        _, other_release = mod_store.acquire_package(control_sha, root)
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'in use'):
+                acquire(manifest, root)
+            # Failed second acquisition must not leak the first package's lease.
+            _, release_trial = mod_store.acquire_package(trial_sha, root)
+            release_trial()
+        finally:
+            other_release()
+        release = acquire(manifest, root)
+        try:
+            for record in (trial, control):
+                with self.assertRaisesRegex(RuntimeError, 'in use'):
+                    mod_config.write(record['sha256'], record['configurationRevision'], {}, root)
+                with self.assertRaisesRegex(RuntimeError, 'in use'):
+                    mod_store.remove(record['sha256'], root)
+        finally:
+            release()
+        release()  # Idempotent confirmed release.
+        for record in (trial, control):
+            mod_store.remove(record['sha256'], root)
+
 
 if __name__ == '__main__':
     unittest.main()

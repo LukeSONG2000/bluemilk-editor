@@ -34,13 +34,15 @@ def read_mode_provenance(path, metadata, capture_info):
     return mode
 
 
-def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None, trial_package=None, trial_sha=None, managed_trial=None):
+def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, trace_ai=False, enemy_basic_demo=False, enemy_control=False, ai_priority_order=None, current_selection=False, experimental_prediction=False, enemy_ui=False, *, schema_bundle=None, module_root=None, control=None, trial_package=None, trial_sha=None, managed_trial=None, managed_control=None):
     control_record = None
-    if control is not None:
+    if control is not None or managed_control is not None:
+        if control is not None and managed_control is not None:
+            raise ValueError("Choose managed or external control, not both")
         if mode != 'visual' or enemy_control or enemy_ui or enemy_basic_demo or ai_priority_order is not None or experimental_prediction:
             raise ValueError('Packaged control requires visual trial without legacy control or AI modification')
         from trial_control_package import read_control
-        control_record = read_control(control)
+        control_record = managed_control if managed_control is not None else read_control(control)
     enemy_control = enemy_control or enemy_ui
     if enemy_ui and ai_priority_order is not None:
         raise ValueError("Enemy UI cannot combine with AI priority")
@@ -148,6 +150,8 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
                 'originalAssemblySha256': '12cc254525a58aedea122a2967d0476da05b98ef0c219dc18cfc0b7207538db6'}
     if managed_trial is not None:
         manifest['managedTrialPackage'] = {key: managed_trial[key] for key in ('sha256', 'configurationRevision')}
+    if managed_control is not None:
+        manifest['managedControlPackage'] = {key: managed_control[key] for key in ('sha256', 'configurationRevision')}
     if js.exists() or manifest_path.exists():
         raise FileExistsError('Use a new output prefix to preserve prior evidence')
     with js.open('xb') as target:
