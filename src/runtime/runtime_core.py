@@ -125,6 +125,7 @@ class Runtime:
 
     def register_package(self, sha256):
         from mod_store import acquire_package
+        from mod_config import read
         if not self.script:
             raise RuntimeError('Connect before registering a Mod')
         if sha256 not in self.package_leases:
@@ -132,7 +133,7 @@ class Runtime:
             self.package_leases[sha256] = (payload, release)
         payload, _ = self.package_leases[sha256]
         # Unknown registration outcomes retain the lease until confirmed cleanup.
-        return self.call_args('modregisterpackage', *payload)
+        return self.call_args('modregisterpackage', *payload, read(sha256)['values'])
 
     def uninstall_package(self, sha256):
         from mod_store import remove

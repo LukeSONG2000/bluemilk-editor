@@ -75,3 +75,23 @@ does not silently reinstall the information Mod. An explicit package install cle
 the opt-out. Requesting information on connect while it is uninstalled fails with a
 reinstall instruction. Uninstall does not touch game files or operation receipts.
 The marker records the Mod ID and removed hash; it is not an enable-on-start profile.
+
+## 配置快照
+
+`sdk.config.read()` 返回当前包注册时的 JSON 对象副本。修改返回值不会修改
+保存的配置或后续读取。重复启停使用同一快照；重新注册才读取新配置。
+示例见 `examples/configuration`，无游戏查询或钩子。
+
+共享协议提供：
+
+```json
+{"id":"read","operation":"mods-config-read","payload":{"sha256":"已安装包的64位摘要"}}
+{"id":"save","operation":"mods-config-write","payload":{"sha256":"已安装包的64位摘要","revision":"读取响应中的revision","values":{"label":"My Mod"}}}
+```
+
+保存采用修订检查及原子替换。先断开持有该包的所有运行时；仅停用仍保留
+注册快照，不能修改。写入响应 `activation: "next-registration"` 不表示已启用。
+配置按包摘要隔离，升级不自动沿用旧配置；卸载保留配置，重装相同包可恢复。
+当前上限为 8 KiB、16 层嵌套，数值限 JavaScript 可安全表达的范围。
+损坏文件不会自动重置。作者需在工厂中校验字段含义，尚无通用配置表单或 schema。
+配置不是凭据保险库，请勿保存访问令牌。
