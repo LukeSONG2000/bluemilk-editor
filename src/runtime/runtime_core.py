@@ -46,13 +46,19 @@ class Runtime:
         self.release_ownership = None
         self.capture = None
         self.package_leases = {}
+        self.game_pid = None
+        self.initialized = False
         self.inbox_claims = InboxClaims(DATA/'inbox-claims')
         self.calendar_claims = CalendarClaims(DATA/'calendar-claims')
         self.quest_claims = QuestClaims(DATA/'quest-claims')
 
     def connect(self, information=False):
         if self.session:
-            raise RuntimeError('已经连接')
+            if self.initialized:
+                return {'pid': self.game_pid, 'snapshot': self.call('inspect'), 'reused': True}
+            # A bootstrap failure cannot own a Mod: never leave a half-loaded
+            # script blocking every subsequent connection attempt.
+            self.disconnect()
         game = find_game()
         modules = MODULES.copy()
         source = 'globalThis.deferBattleInfoInstallation=true;\n'
@@ -65,6 +71,12 @@ class Runtime:
             self.script = self.session.create_script(source)
             self.script.on('message', self.message)
             self.script.load()
+            exports = self.script.list_exports_sync()
+            if 'inspect' not in exports or 'shutdown' not in exports:
+                raise RuntimeError('游戏运行组件尚未初始化完成，请稍候自动重连。')
+            snapshot = self.script.exports_sync.inspect()
+            self.initialized = True
+            self.game_pid = game['pid']
             from mod_profile import acquire
             startup, selected, leases = acquire()
             self.package_leases.update(leases)
@@ -80,20 +92,49 @@ class Runtime:
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')
             self.calendar_claims = CalendarClaims(DATA/'calendar-claims')
             self.quest_claims = QuestClaims(DATA/'quest-claims')
-            return {'pid':game['pid'], 'snapshot':self.script.exports_sync.inspect(),
+            return {'pid':game['pid'], 'snapshot':snapshot,
                     'modProfileRevision': startup['revision']}
         except Exception:
-            if self.script:
+            if self.script and self.initialized:
                 # A failed installation can own hooks/UI. Verify restoration
                 # before detaching; cleanup failure retains the session lock.
                 self.script.exports_sync.shutdown()
             if self.session:
                 self.session.detach()
             self.session = self.script = None
+            self.initialized = False
+            self.game_pid = None
             self._release_packages()
             self.release_ownership()
             self.release_ownership = None
             raise
+
+    def set_mod_enabled(self, identity, sha256, enabled):
+        from mod_profile import read, write
+        from mod_store import _registration, directory
+        payload = _registration(sha256, directory())
+        if payload[0]['id'] != identity:
+            raise ValueError('Selected package ID mismatch')
+        if self.script:
+            mods = self.call_args('modcommand', 'list', {}).get('mods', [])
+            current = next((m for m in mods if m['manifest']['id'] == identity), None)
+            if current and current.get('packageSha256') != sha256:
+                raise ValueError('A different version is loaded; restore the session before switching versions')
+        profile = read()
+        selections = {**profile['selections'], identity: {'sha256': sha256, 'enabled': enabled}}
+        saved = write(profile['revision'], selections, owned_hashes=self.package_leases)
+        if not self.script:
+            return {**saved, 'applied': False, 'status': 'waiting-for-game'}
+        try:
+            if enabled:
+                self.register_package(sha256)
+            if enabled or current:
+                self.call_args('modcommand', 'enable' if enabled else 'disable', {'id': identity})
+            return {**saved, 'applied': True, 'status': 'enabled' if enabled else 'disabled'}
+        except Exception as error:
+            # The preference remains saved, but a native failure is never
+            # reported as successful activation or automatically replayed.
+            return {**saved, 'applied': False, 'status': 'apply-failed', 'error': str(error)}
 
     def message(self, message, data):
         with (DATA / 'runtime.jsonl').open('a', encoding='utf-8') as f:
@@ -187,12 +228,15 @@ class Runtime:
         if self.session:
             try:
                 if self.capture:self.capture.close()
-                self.script.exports_sync.shutdown()
+                if self.initialized:
+                    self.script.exports_sync.shutdown()
             except (frida.InvalidOperationError, frida.ProcessNotFoundError):
                 pass  # Process exited; no native callbacks remain.
             # Other failures retain ownership so a held callback is not discarded.
             self.session.detach()
             self.session = self.script = None
+            self.initialized = False
+            self.game_pid = None
             self.capture = None
         if self.release_ownership:
             self.release_ownership()

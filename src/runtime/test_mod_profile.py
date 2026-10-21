@@ -11,6 +11,8 @@ from mod_package import inspect_package
 from mod_profile import read, write, acquire
 from mod_store import install, remove, acquire_package
 from runtime_protocol import ProtocolSession
+from runtime_core import Runtime
+from unittest.mock import Mock
 
 
 class ProfileTests(unittest.TestCase):
@@ -25,6 +27,44 @@ class ProfileTests(unittest.TestCase):
         sha = inspect_package(self.path)['sha256']
         install(self.path, sha)
         return {'sha256': sha, 'enabled': True}
+
+    def test_enable_offline_persists_without_game_and_disable_survives_reload(self):
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            item = self.package()
+            runtime = Runtime()
+            session = ProtocolSession(runtime)
+            def set_enabled(enabled):
+                return session.dispatch(json.dumps({'id': str(enabled), 'operation': 'mods-set-enabled',
+                    'payload': {'id': 'org.example.reader', 'sha256': item['sha256'], 'enabled': enabled}}))
+            result = set_enabled(True)
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(result['result']['status'], 'waiting-for-game')
+            self.assertIsNone(runtime.session)
+            _, ordered, leases = acquire()
+            self.assertEqual(ordered[0][0], 'org.example.reader')
+            for _, release in leases.values(): release()
+            self.assertTrue(set_enabled(False)['ok'])
+            self.assertFalse(read()['selections']['org.example.reader']['enabled'])
+
+    def test_live_toggle_saves_own_leased_version_and_preserves_failure(self):
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            item = self.package()
+            payload, release = acquire_package(item['sha256'])
+            runtime = Runtime()
+            runtime.script = Mock()
+            runtime.package_leases[item['sha256']] = (payload, release)
+            def native(operation, command, values):
+                if command == 'list': return {'mods': [{'manifest':payload[0], 'packageSha256':item['sha256']}]}
+                raise RuntimeError('native cleanup failed')
+            try:
+                with patch.object(runtime, 'call_args', side_effect=native):
+                    result = runtime.set_mod_enabled('org.example.reader', item['sha256'], False)
+                self.assertEqual(result['status'], 'apply-failed')
+                self.assertFalse(result['applied'])
+                self.assertFalse(read()['selections']['org.example.reader']['enabled'])
+                with self.assertRaisesRegex(RuntimeError, 'in use'):
+                    write(read()['revision'], {})
+            finally: release()
 
     def test_upgrade_rollback_revisions_and_persistence(self):
         with patch.dict(os.environ, USERPROFILE=self.temp.name):

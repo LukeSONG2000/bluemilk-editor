@@ -21,6 +21,7 @@ class SessionLockTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'attach failed'):runtime.connect()
             release.assert_called_once();self.assertIsNone(runtime.release_ownership)
         runtime.session=Mock();runtime.script=Mock();runtime.release_ownership=Mock()
+        runtime.initialized=True  # An initialized adapter may own native hooks.
         runtime.script.exports_sync.shutdown.side_effect=RuntimeError('cleanup incomplete')
         with self.assertRaisesRegex(RuntimeError,'cleanup incomplete'):runtime.disconnect()
         runtime.release_ownership.assert_not_called();runtime.session.detach.assert_not_called()

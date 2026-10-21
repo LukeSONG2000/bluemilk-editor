@@ -2,7 +2,9 @@
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
 Editor 不捆绑或自动安装官方 Mod；用户手动安装离线包，并明确选择启用。
-已有用户安装的包及启动配置保留。BlueMilk Pro（`bluemilk-pro`）提供原版辅助；
+已有用户安装的包及启动配置保留。Mod 管理的开关保存长期启用设置，不要求先连接游戏；
+离线开启后会在连接时自动加载，侧栏显示已启用的包。原生加载失败会单独提示，
+不会把“设置已保存”当成“游戏内已生效”。BlueMilk Pro（`bluemilk-pro`）提供原版辅助；
 BlueMilk Ultra（`bluemilk-ultra`）承载改变玩法的功能，分别独立维护。
 当前 Pro 首段为信息拓展；初始/当前属性的变化来源解释仍待实现。
 自动连接与共享服务恢复已接入；仓库地址安装和游戏版本动态兼容仍待逐项验收。
@@ -72,6 +74,12 @@ py tools/build_runtime.py --names C:/BlueMilkInputs/names.json --schema C:/BlueM
 `src/dist`，构建临时文件位于 `logs/build-runtime`。最终用户运行 EXE 无需 Python/Node。
 默认不创建试玩截图；显式指定 `capturePath` 才写截图，避免旧机器的硬编码路径。
 当前适配仅接受 `runtime_core.EXPECTED` 对应的 GameAssembly 摘要；其他版本拒绝连接。
+
+CLI 可通过 `mods-set-enabled` 保存与客户端相同的启用设置，载荷为
+`{"id":"bluemilk.pro","sha256":"<已安装包摘要>","enabled":true}`。
+未连接时只保存选择；连接时应用。返回 `applied:false` 与 `status:apply-failed`
+表示选择已保存但实际加载失败，需查看 `error`。旧 `mods-enable` / `mods-disable`
+保留仅修改当前会话的语义。
 
 ## 运行示例
 

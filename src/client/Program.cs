@@ -96,17 +96,12 @@ public sealed partial class ShellApplication : Application
                 }
             }
         }
-        content.RuntimeModsChanged += UpdateRunningMods;
-        content.RuntimeModsChanged += dashboard.Running;
         content.RuntimeModsChanged += mods.SyncRuntime;
-        mods.RuntimeModsChanged += dashboard.Running;
-        mods.RuntimeModsChanged += UpdateRunningMods;
+        content.ModProfileChanged += mods.SyncProfile;
+        mods.EnabledModsChanged += dashboard.Running;
+        mods.EnabledModsChanged += UpdateRunningMods;
         content.StateChanged += () => {
             mods.SyncConnection(content.IsConnected);
-            if (!content.IsConnected) {
-                var none = JsonSerializer.SerializeToElement(Array.Empty<object>());
-                UpdateRunningMods(none); dashboard.Running(none);
-            }
         };
         var proFeatures = new[] {
             new DashboardFeature("bluemilk.pro.information", "游戏内信息拓展", WidgetKind.Toggle,

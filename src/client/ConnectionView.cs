@@ -28,6 +28,7 @@ internal sealed class ConnectionView : StackPanel
     internal bool IsPreparedTrial { get; private set; }
     internal event Action? StateChanged;
     internal event Action<JsonElement>? RuntimeModsChanged;
+    internal event Action<JsonElement>? ModProfileChanged;
     internal event Action<JsonElement>? SnapshotChanged;
 
     public ConnectionView(Func<nint>? windowHandle = null)
@@ -160,6 +161,8 @@ internal sealed class ConnectionView : StackPanel
     private async Task ReadInformationStateAsync()
     {
         if (runtime == null || IsPreparedTrial || IsTrialObserver) return;
+        var profile = await runtime.RequestAsync("mods-profile-read");
+        ModProfileChanged?.Invoke(profile.GetProperty("selections").Clone());
         var state = await runtime.RequestAsync("mods-list");
         RuntimeModsChanged?.Invoke(state.GetProperty("mods").Clone());
         InformationEnabled = state.GetProperty("mods").EnumerateArray().Any(m =>

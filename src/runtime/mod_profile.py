@@ -88,7 +88,7 @@ def read(root=None):
         return _read(root)
 
 
-def write(revision, selections, root=None):
+def write(revision, selections, root=None, *, owned_hashes=()):
     raw = _encode(selections)
     root = Path(root) if root else directory()
     with locked(root):
@@ -103,7 +103,10 @@ def write(revision, selections, root=None):
         releases = []
         try:
             for sha in sorted(hashes):
-                releases.append(_lease(sha, root))
+                # The serialized runtime may update its own exact-version
+                # enable preference without acquiring its OS lease twice.
+                if sha not in owned_hashes:
+                    releases.append(_lease(sha, root))
             temporary = root / (uuid.uuid4().hex + '.partial')
             try:
                 with temporary.open('xb') as stream:

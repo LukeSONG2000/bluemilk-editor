@@ -8,6 +8,7 @@ internal sealed class ModManagementView : StackPanel
 {
     internal event Action<JsonElement>? PackagesChanged;
     internal event Action<JsonElement>? RuntimeModsChanged;
+    internal event Action<JsonElement>? EnabledModsChanged;
     private readonly AppBarButton choose = new() { Label = "添加", Icon = new SymbolIcon(Symbol.Add) };
     private readonly Button install = new() { Content = "安装", IsEnabled = false };
     private readonly AppBarButton refresh = new() { Label = "刷新", Icon = new SymbolIcon(Symbol.Refresh) };
@@ -29,6 +30,7 @@ internal sealed class ModManagementView : StackPanel
     private bool busy, gameConnected, syncingRows;
     private readonly Dictionary<string, JsonElement> runtimeMods = new();
     private JsonElement startupSelections;
+    private JsonElement installedPackages;
     private sealed record Row(string Id, string Hash, string Name, string Version, string Usage);
 
     internal ModManagementView(Func<nint> windowHandle)
@@ -67,7 +69,7 @@ internal sealed class ModManagementView : StackPanel
         refresh.Click += async (_, _) => { try { await RefreshAsync(); } catch { } };
         load.Click += async (_, _) => { try { await ChangeAsync("mods-package-register"); } catch { } };
         enable.Click += async (_, _) => { try { await EnableSelectedAsync(); } catch { } };
-        disable.Click += async (_, _) => { try { await ChangeAsync("mods-disable"); } catch { } };
+        disable.Click += async (_, _) => { try { await SetSelectedEnabledAsync(false); } catch { } };
         uninstall.Click += async (_, _) => { try { await DeleteSelectedAsync(); } catch { } };
         configure.Click += async (_, _) => { try { await ConfigureAsync(); } catch { } };
         startup.Click += async (_, _) => { try { await StartupAsync(); } catch { } };
@@ -81,7 +83,31 @@ internal sealed class ModManagementView : StackPanel
     internal void SyncConnection(bool connected) {
         gameConnected = connected;
         foreach (ListViewItem entry in list.Items)
-            foreach (var toggle in ((Grid)entry.Content).Children.OfType<ToggleSwitch>()) toggle.IsEnabled = connected && !busy;
+            foreach (var toggle in ((Grid)entry.Content).Children.OfType<ToggleSwitch>()) toggle.IsEnabled = !busy;
+    }
+    private bool Desired(Row row) => startupSelections.ValueKind == JsonValueKind.Object &&
+        startupSelections.TryGetProperty(row.Id, out var saved) && saved.GetProperty("sha256").GetString() == row.Hash
+            ? saved.GetProperty("enabled").GetBoolean() : Runtime(row)?.GetProperty("state").GetString() == "enabled";
+    internal void SyncProfile(JsonElement selections) {
+        startupSelections = selections.Clone();
+        SyncToggles();
+    }
+    private void SyncToggles() {
+        syncingRows = true;
+        try { foreach (ListViewItem entry in list.Items) {
+            var row = (Row)entry.Tag;
+            var toggle = ((Grid)entry.Content).Children.OfType<ToggleSwitch>().FirstOrDefault();
+            if (toggle != null && toggle.IsOn != Desired(row)) toggle.IsOn = Desired(row);
+        } } finally { syncingRows = false; }
+        if (installedPackages.ValueKind == JsonValueKind.Array) {
+            var enabled = installedPackages.EnumerateArray().Where(p => {
+                var manifest = p.GetProperty("manifest");
+                var row = new Row(manifest.GetProperty("id").GetString()!,p.GetProperty("sha256").GetString()!,"","","");
+                return Desired(row);
+            }).Select(p => new { manifest = p.GetProperty("manifest"), state = "enabled", packageSha256 = p.GetProperty("sha256").GetString() });
+            EnabledModsChanged?.Invoke(JsonSerializer.SerializeToElement(enabled.ToArray()));
+        }
+        Update();
     }
     internal void SyncRuntime(JsonElement mods) {
         if (busy) return;
@@ -92,9 +118,10 @@ internal sealed class ModManagementView : StackPanel
             var row = (Row)entry.Tag;
             var toggle = ((Grid)entry.Content).Children.OfType<ToggleSwitch>().FirstOrDefault();
             if (toggle == null) continue;
-            var active = Runtime(row)?.GetProperty("state").GetString() == "enabled";
+            var active = Desired(row);
             if (toggle.IsOn != active) toggle.IsOn = active;
         } } finally { syncingRows = false; }
+        SyncToggles();
     }
 
     private static Grid ColumnRow(string name, string version, string usage, string state)
@@ -143,10 +170,19 @@ internal sealed class ModManagementView : StackPanel
     }
     private async Task EnableSelectedAsync()
     {
-        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
-        if (Runtime(row) == null) await ChangeAsync("mods-package-register");
-        await ChangeAsync("mods-enable");
+        await SetSelectedEnabledAsync(true);
     }
+    private Task SetSelectedEnabledAsync(bool enabled) => RunAsync(async service => {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        var result = await service.RequestAsync("mods-set-enabled", new { id = row.Id, sha256 = row.Hash, enabled });
+        await PopulateAsync(service);
+        var failed = result.GetProperty("status").GetString() == "apply-failed";
+        status.IsOpen = true; status.Title = failed ? "设置已保存，加载未完成" : enabled ? "已启用" : "已停用";
+        status.Severity = failed ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
+        status.Message = failed ? result.GetProperty("error").GetString() :
+            result.GetProperty("applied").GetBoolean() ? "当前会话已应用，重新连接后保留此设置。" : "连接游戏后自动应用。";
+        return true;
+    });
     private async Task DeleteSelectedAsync()
     {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
@@ -169,14 +205,16 @@ internal sealed class ModManagementView : StackPanel
     private void Update()
     {
         choose.IsEnabled = refresh.IsEnabled = !busy; list.IsEnabled = !busy;
+        foreach (ListViewItem entry in list.Items)
+            foreach (var toggle in ((Grid)entry.Content).Children.OfType<ToggleSwitch>()) toggle.IsEnabled = !busy;
         install.IsEnabled = !busy && inspectedHash != null;
         var row = Selected;
         var installed = row != null && row.Hash.Length > 0;
         var native = row == null ? null : Runtime(row);
         var state = native?.GetProperty("state").GetString();
         load.IsEnabled = !busy && gameConnected && installed && native == null;
-        enable.IsEnabled = !busy && gameConnected && installed && (native == null || state == "disabled");
-        disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
+        enable.IsEnabled = !busy && installed && !Desired(row!);
+        disable.IsEnabled = !busy && installed && Desired(row!);
         uninstall.IsEnabled = !busy && installed;
         configure.IsEnabled = update.IsEnabled = !busy && installed;
         startup.IsEnabled = !busy && installed;
@@ -243,6 +281,7 @@ internal sealed class ModManagementView : StackPanel
     {
         var selected = Selected?.Hash;
         var packages = await service.RequestAsync("mods-package-list");
+        installedPackages = packages.GetProperty("packages").Clone();
         startupSelections = (await service.RequestAsync("mods-profile-read")).GetProperty("selections").Clone();
         runtimeMods.Clear();
         if (gameConnected) {
@@ -270,7 +309,7 @@ internal sealed class ModManagementView : StackPanel
             columns.Children.RemoveAt(3);
             var toggle = new ToggleSwitch { OnContent = "", OffContent = "", MinWidth = 44,
                 HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-                IsOn = Runtime(row)?.GetProperty("state").GetString() == "enabled", IsEnabled = gameConnected };
+                IsOn = Desired(row), IsEnabled = !busy };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, row.Name + " 启用");
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, "mod-toggle-" + row.Id);
             ToolTipService.SetToolTip(toggle, StateName(Runtime(row)?.GetProperty("state").GetString()));
@@ -278,8 +317,8 @@ internal sealed class ModManagementView : StackPanel
             toggle.Toggled += async (_, _) => {
                 if (syncingRows || busy) return;
                 list.SelectedItem = entry;
-                try { if (toggle.IsOn) await EnableSelectedAsync(); else await ChangeAsync("mods-disable"); }
-                catch { syncingRows = true; toggle.IsOn = Runtime(row)?.GetProperty("state").GetString() == "enabled"; syncingRows = false; }
+                try { await SetSelectedEnabledAsync(toggle.IsOn); }
+                catch { syncingRows = true; toggle.IsOn = Desired(row); syncingRows = false; }
             };
 
             var label = columns.Children[0]; columns.Children.RemoveAt(0);
@@ -295,6 +334,7 @@ internal sealed class ModManagementView : StackPanel
         if (list.Items.Count == 0) detail.Text = "尚未安装 Mod，请选择一个 .bluemilk 文件。";
         PackagesChanged?.Invoke(packages.GetProperty("packages").Clone());
         RuntimeModsChanged?.Invoke(JsonSerializer.SerializeToElement(runtimeMods.Values.ToArray()));
+        SyncToggles();
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
