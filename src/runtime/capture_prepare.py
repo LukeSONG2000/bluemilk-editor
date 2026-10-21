@@ -31,20 +31,19 @@ def prepare_request(payload, assets, output):
     output.mkdir(parents=True, exist_ok=True)
     prefix = output/('prepared-'+uuid.uuid4().hex)
     from trial_store import snapshot
-    trial = snapshot((folder/'trial.bluemilk').resolve(), manifest['files']['trial.bluemilk'])
+    trial = snapshot(None, None)
     control = payload.get('control')
     managed_control = None
     if isinstance(control, dict) and set(control) == {'policy'}:
         from trial_control_package import validate_policy
         policy = validate_policy(control['policy'])
-        managed_control = snapshot((folder/'battle-control.bluemilk').resolve(),
-                                   manifest['files']['battle-control.bluemilk'],
+        managed_control = snapshot(None, None,
                                    identity='bluemilk.battle-control', capability='battle.control')
         managed_control['policy'] = policy
         control = None
     result = prepare(payload['battle'], payload['inventory'], None, prefix, payload['squadType'],
                      'visual', payload['durationSeconds'], payload['auto'],
                      schema_bundle=folder/'schema.json', module_root=folder, control=control, managed_control=managed_control,
-                     trial_package=folder/'trial.bluemilk', trial_sha=manifest['files']['trial.bluemilk'], managed_trial=trial)
+                     trial_sha=trial['sha256'], managed_trial=trial)
     return dict(manifest=str(prefix.with_suffix('.json')), prepared=result,
                 started=False, runtimeCompatibilityVerified=False)

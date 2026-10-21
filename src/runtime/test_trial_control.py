@@ -70,6 +70,10 @@ class TrialControlTests(unittest.TestCase):
         from trial_store import snapshot
         from mod_config import read, write
         root = self.folder/'store'
+        import mod_store, mod_profile
+        mod_store.install(self.package, self.digest, root)
+        mod_profile.write(mod_profile.read(root)['revision'],
+            {'bluemilk.battle-control': {'sha256':self.digest,'enabled':False}}, root)
         record = snapshot(self.package, self.digest, root,
                           identity='bluemilk.battle-control', capability='battle.control')
         write(self.digest, record['configurationRevision'], {'sample': 'preserved'}, root)

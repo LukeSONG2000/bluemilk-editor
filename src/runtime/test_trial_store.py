@@ -19,6 +19,18 @@ class TrialStoreTests(unittest.TestCase):
         test_mod_package.PackageTests.write(self)
         return inspect_package(self.path)['sha256']
 
+    def select(self, sha, root, identity='bluemilk.trial'):
+        mod_store.install(self.path, sha, root)
+        profile = mod_profile.read(root)
+        mod_profile.write(profile['revision'], {**profile['selections'], identity: {'sha256':sha,'enabled':False}}, root)
+
+    def test_no_implicit_package_install(self):
+        root = Path(self.temp.name)/'store'
+        sha = self.package()
+        with self.assertRaisesRegex(ValueError, 'explicitly install'):
+            snapshot(self.path, sha, root)
+        self.assertEqual(mod_store.discover(root)['packages'], [])
+
     def test_selected_version_configuration_and_lease(self):
         root = Path(self.temp.name)/'store'
         old = self.package()
@@ -50,16 +62,20 @@ class TrialStoreTests(unittest.TestCase):
     def test_uninstall_suppression_and_running_uninstall(self):
         root = Path(self.temp.name)/'store'
         sha = self.package()
+        self.select(sha, root)
         record = snapshot(self.path, sha, root)
         release = acquire(dict(trialPackageSha256=sha, managedTrialPackage={
             key: record[key] for key in ('sha256', 'configurationRevision')}), root)
         try:
-            with self.assertRaisesRegex(RuntimeError, 'in use'):
+            with self.assertRaisesRegex(ValueError, 'startup profile'):
                 mod_store.remove(sha, root)
+            with self.assertRaisesRegex(RuntimeError, 'in use'):
+                mod_profile.write(mod_profile.read(root)['revision'], {}, root)
         finally:
             release()
+        mod_profile.write(mod_profile.read(root)['revision'], {}, root)
         mod_store.remove(sha, root)
-        with self.assertRaisesRegex(ValueError, 'uninstalled'):
+        with self.assertRaisesRegex(ValueError, 'explicitly install'):
             snapshot(self.path, sha, root)
         self.assertEqual(mod_store.discover(root)['packages'], [])
         acquire({})()  # Existing explicitly selected standalone artifacts still work.
@@ -80,10 +96,12 @@ class TrialStoreTests(unittest.TestCase):
     def test_two_packages_rollback_and_hold_until_release(self):
         root = Path(self.temp.name)/'store'
         trial_sha = self.package()
+        self.select(trial_sha, root)
         trial = snapshot(self.path, trial_sha, root)
         self.manifest.update(id='bluemilk.battle-control', capabilities=['battle.control'])
         test_mod_package.PackageTests.write(self)
         control_sha = inspect_package(self.path)['sha256']
+        self.select(control_sha, root, 'bluemilk.battle-control')
         control = snapshot(self.path, control_sha, root,
                            identity='bluemilk.battle-control', capability='battle.control')
         manifest = {'trialPackageSha256': trial_sha, 'controlPackageSha256': control_sha}
@@ -103,11 +121,12 @@ class TrialStoreTests(unittest.TestCase):
             for record in (trial, control):
                 with self.assertRaisesRegex(RuntimeError, 'in use'):
                     mod_config.write(record['sha256'], record['configurationRevision'], {}, root)
-                with self.assertRaisesRegex(RuntimeError, 'in use'):
+                with self.assertRaisesRegex(ValueError, 'startup profile'):
                     mod_store.remove(record['sha256'], root)
         finally:
             release()
         release()  # Idempotent confirmed release.
+        mod_profile.write(mod_profile.read(root)['revision'], {}, root)
         for record in (trial, control):
             mod_store.remove(record['sha256'], root)
 

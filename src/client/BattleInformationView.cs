@@ -29,11 +29,11 @@ internal sealed class BattleInformationView : StackPanel
         names = File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file))! : new();
         Children.Add(new TextBlock { Text = "战斗助手", FontSize = 28 });
         Children.Add(information);
-        Children.Add(new TextBlock { Text = "血盾数字、敌方技能 CD、有限状态回合数显示在游戏内。连接前选择；修改需先断开。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(new TextBlock { Text = "需先手动安装 BlueMilk Pro 并在启动设置中选择。游戏内显示血盾数字、敌方技能 CD 和有限状态回合数。", TextWrapping = TextWrapping.Wrap });
         Children.Add(connectionHint);
         var attributes = new StackPanel { Spacing = 12 };
         attributes.Children.Add(unit); attributes.Children.Add(pools); attributes.Children.Add(mastery);
-        attributes.Children.Add(new TextBlock { Text = "跟随游戏当前目标或长按面板。净变化包含全部战斗因素，尚未单独归因精通贡献。", TextWrapping = TextWrapping.Wrap });
+        attributes.Children.Add(new TextBlock { Text = "跟随游戏当前目标或长按面板，显示初始与当前属性。各项变化的影响来源尚未完成归因。", TextWrapping = TextWrapping.Wrap });
         attributes.Children.Add(Row("属性", "初始", "当前", "净变化"));
         attributes.Children.Add(table);
         Controller = new EnemyControlView(connection, names);

@@ -84,7 +84,7 @@ internal sealed class ConnectionView : StackPanel
                 ? await runtime.RequestAsync("trial-connect", new { directory = trialDirectory, pid = trialPid })
                 : await runtime.RequestAsync("connect", new { information = InformationEnabled });
             if (runtime.IsShared && runtime.SharedGamePid.HasValue && InformationEnabled && !IsPreparedTrial)
-                await runtime.RequestAsync("mods-enable", new { id = "bluemilk.information" });
+                await runtime.RequestAsync("mods-enable", new { id = "bluemilk.pro" });
             connected = true;
             ShowSnapshot(IsTrialObserver ? result : result.GetProperty("snapshot"));
             return result;

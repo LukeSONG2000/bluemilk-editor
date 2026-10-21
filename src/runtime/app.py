@@ -296,7 +296,7 @@ def main():
             result={'frozen':bool(getattr(sys,'frozen',False)),'frida':frida.__version__,'assets':all((ASSETS/n).is_file() for n in MODULES+['battle_info_ui.js','bridge.js','names.json'])}
             if not result['assets']:raise RuntimeError('Missing bundled assets')
             manifest=json.loads((ASSETS/'manifest.json').read_text(encoding='utf-8'))
-            result['assetHashes']={n:hashlib.sha256((ASSETS/n).read_bytes()).hexdigest() for n in MODULES+['battle_info_ui.js','bridge.js','names.json','battle_proto.js','battle_capture.js','information.bluemilk']}
+            result['assetHashes']={n:hashlib.sha256((ASSETS/n).read_bytes()).hexdigest() for n in MODULES+['battle_info_ui.js','bridge.js','names.json','battle_proto.js','battle_capture.js']}
             result['manifestVerified']=all(manifest['files'].get(n)==h for n,h in result['assetHashes'].items())
             if not result['manifestVerified']:raise RuntimeError('Bundled asset hash mismatch')
             if args.probe:

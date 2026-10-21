@@ -229,6 +229,7 @@ public sealed partial class ShellApplication : Application
                 throw new InvalidOperationException("Home screen required for lifecycle smoke.");
             await mods.RefreshAsync();
             mods.SelectMod(modId);
+            await mods.ChangeAsync("mods-package-register");
             await mods.ChangeAsync("mods-enable");
             if (output != null) await File.WriteAllTextAsync(output + ".enabled", "{\"enabled\":true}");
             await Task.Delay(16000);
