@@ -21,6 +21,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Client release rebuild failed.' }
 $publishArguments = @('publish', $project, '-c', 'Release', '--no-build', '-o', $output) + $channelArguments
 & dotnet @publishArguments
 if ($LASTEXITCODE -ne 0) { throw 'Client publish failed.' }
+$updaterProject = Join-Path (Split-Path $clientRoot -Parent) 'updater/BlueMilk.Updater.csproj'
+& dotnet publish $updaterProject '-c' 'Release' '-o' (Join-Path $output 'updater')
+if ($LASTEXITCODE -ne 0) { throw 'Standalone updater publish failed.' }
 $worker = Join-Path (Split-Path $clientRoot -Parent) 'dist/SWGoH-Runtime.exe'
 if (!(Test-Path -LiteralPath $worker)) { throw 'Run build_desktop_host.py before packaging this client.' }
 $runtimeDirectory = Join-Path $output 'runtime'

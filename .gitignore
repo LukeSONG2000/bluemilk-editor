@@ -10,3 +10,5 @@ logs/
 
 /src/runtime/assets/
 /src/assets/
+/src/updater/bin/
+/src/updater/obj/
