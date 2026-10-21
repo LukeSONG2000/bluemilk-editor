@@ -283,6 +283,15 @@ existing capture/mode restrictions and does not prove replay fidelity for new mo
 
 ## Shared trial session
 
+### Request cache lifetime
+
+The app-server retains mutation request IDs (including failed or uncertain
+results) for its entire instance, up to 4096 entries. Verified read-only queries
+use a separate FIFO cache of 256 entries, so desktop polling cannot exhaust the
+mutation ledger. An expired read ID may execute again and return fresh state.
+Use a fresh ID for each new query; never replay mutations against a new instance.
+Even a full mutation ledger still permits read-only status queries.
+
 Use `bluemilk --jsonl --server auto`. Operations are `trial-prepare` (the same
 preparation payload), `trial-start` (`{"manifest":"C:/.../prepared.json"}`),
 `trial-status`, `trial-control` (the same command/payload pair), `trial-stop`.

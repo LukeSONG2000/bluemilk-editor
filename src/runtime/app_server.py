@@ -1,4 +1,5 @@
 """Shared loopback JSON-RPC transport. Frontend EOF doesn't own runtime lifetime."""
+from collections import OrderedDict
 import asyncio
 import hmac
 import json
@@ -21,6 +22,7 @@ class AppServer:
         self.session = ProtocolSession(runtime)
         self._gate = asyncio.Lock()
         self._responses = {}
+        self._reads = OrderedDict()
         self._server = None
         self._stopped = False
         self._updating = False
@@ -139,18 +141,27 @@ class AppServer:
             async with self._gate:
                 if self._stopped:
                     return self.error(request_id, -32000, 'Server stopped')
-                previous = self._responses.get(request_id)
+                # Only verified read operations may expire. Mutations (including failures
+                # and uncertain outcomes) remain pinned for the entire server instance.
+                readonly = params.get('operation') in {
+                    'snapshot', 'capabilities', 'mods-list', 'mods-package-list',
+                    'mods-config-read', 'mods-profile-read', 'enemy-status',
+                    'trial-status', 'capture-status'}
+                ledger = self._reads if readonly else self._responses
+                previous = self._responses.get(request_id) or self._reads.get(request_id)
                 if previous:
                     if previous[0] != canonical:
                         return self.error(request_id, -32600, 'Request id already used with different parameters')
                     return previous[1]
-                if len(self._responses) >= 4096:
+                if not readonly and len(self._responses) >= 4096:
                     return self.error(request_id, -32000, 'Session request ledger full; no command dispatched')
                 line = json.dumps({'id': request_id, 'operation': params.get('operation'),
                                    'payload': params.get('payload')}, ensure_ascii=False)
                 # Reserve before awaiting; cancellation or an unknown failure must not permit replay.
                 unknown = self.error(request_id, -32001, 'Dispatch outcome unknown; do not replay')
-                self._responses[request_id] = (canonical, unknown)
+                if readonly and len(self._reads) >= 256:
+                    self._reads.popitem(last=False)
+                ledger[request_id] = (canonical, unknown)
                 result = await asyncio.shield(asyncio.to_thread(self.session.dispatch, line))
                 if result.get('ok') and params.get('operation') in ('connect', 'trial-start'):
                     self.game_pid = result['result'].get('pid')
@@ -162,7 +173,7 @@ class AppServer:
                 reply = ({'jsonrpc': '2.0', 'id': request_id, 'result': result.get('result')}
                          if result.get('ok') else
                          self.error(request_id, -32010, result.get('error', 'Runtime operation failed')))
-                self._responses[request_id] = (canonical, reply)
+                ledger[request_id] = (canonical, reply)
                 return reply
         except Exception:
             # Do not return stack frames or authentication/configuration data to clients.

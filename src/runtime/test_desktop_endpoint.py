@@ -45,7 +45,8 @@ class DesktopEndpointTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(process.returncode, 0, stderr.decode())
                     self.assertEqual(json.loads(stdout)['protocol'], 'jsonrpc-2.0-websocket')
                     runtime.call.assert_not_called()
-                    self.assertEqual(len(server._responses), 1)
+                    self.assertEqual(len(server._responses), 0)
+                    self.assertEqual(len(server._reads), 1)
             finally:
                 owner.close()
 

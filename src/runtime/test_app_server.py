@@ -56,6 +56,30 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('error', altered)
         self.runtime.call.assert_called_once()
 
+    async def test_long_polling_does_not_exhaust_write_ledger(self):
+        # More than the former lifetime limit, then a write and duplicate replay.
+        for i in range(4200):
+            reply = await self.server.dispatch(json.dumps({'jsonrpc':'2.0','id':f'poll-{i}',
+                'method':'runtime.call','params':{'instance':self.server.instance,'operation':'snapshot'}}))
+            self.assertIn('result', reply)
+        self.assertLessEqual(len(self.server._reads), 256)
+        self.assertEqual(len(self.server._responses), 0)
+        message = json.dumps({'jsonrpc':'2.0','id':'write-after-polls','method':'runtime.call',
+            'params':{'instance':self.server.instance,'operation':'disarm'}})
+        first = await self.server.dispatch(message)
+        calls = self.runtime.call.call_count
+        self.assertEqual(await self.server.dispatch(message), first)
+        self.assertEqual(self.runtime.call.call_count, calls)
+        self.assertIn('write-after-polls', self.server._responses)
+
+    async def test_full_write_ledger_keeps_reads_available_and_writes_blocked(self):
+        self.server._responses.update({f'write-{i}':('old',{}) for i in range(4096)})
+        async with self.client() as client:
+            self.assertIn('result', await self.call(client, 'fresh-read'))
+            result = await self.call(client, 'fresh-write', 'disarm')
+            self.assertIn('ledger full', result['error']['message'])
+        self.runtime.call.assert_called_once()
+
     async def test_auth_and_browser_origins_rejected_before_runtime(self):
         with self.assertRaises(InvalidStatus):
             async with connect(self.uri, proxy=None):
