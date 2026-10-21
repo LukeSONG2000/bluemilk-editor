@@ -3,6 +3,20 @@ using System.Text.Json;
 using System.Diagnostics;
 using Swgoh.Client;
 
+if (args.Length == 2 && args[0] is ("--prepare-update" or "--prepare-update-cancel"))
+{
+    try {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(args[0] == "--prepare-update-cancel" ? 1 : 30));
+        using var lease = await UpdatePreparation.AcquireAsync(args[1], deadline.Token);
+        Console.WriteLine("prepared");
+        await Console.In.ReadLineAsync();
+    } catch (Exception error) {
+        Console.Error.WriteLine(error.GetType().Name);
+        Environment.ExitCode = 2;
+    }
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--update-lease")
 {
     try {

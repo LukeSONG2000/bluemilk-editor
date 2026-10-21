@@ -330,9 +330,25 @@ contract. The default endpoint directory is shared across EXE/MSIX and CLI;
 explicit alternate server directories are separate domains and require their own
 quiescence checks before replacing a binary used by those hosts.
 
-This is the transport and locking prerequisite only: the client install/restart
-coordinator and actual in-app upgrade acceptance are still pending. A shutdown
-receipt alone does not prove installation succeeded.
+The C# `UpdatePreparation.AcquireAsync` uses a dedicated authenticated connection,
+requires both update capabilities, sends only guarded shutdown, waits on a retained
+host process handle, and then acquires the exclusive lease. It does not launch a
+server or retry shutdown. Its originating frontend must detach first; another
+connected frontend causes refusal. Cancellation closes the dedicated connection
+and does not start installation, even if a shutdown request was already accepted.
+
+Reproducible Windows integration verification (isolated endpoints; no game calls):
+build `src/client_tests/Client.Tests.csproj`, then run
+`py tests/verify_client_update_preparation.py <Client.Tests.dll> <SWGoH-Runtime.exe>`.
+It covers actual frozen-host exit and lease ownership, other clients, old servers,
+retained game ownership, invalid acknowledgments, and cancellation during connection
+setup without leaving a frontend behind. Fixtures do not prove original battle
+cleanup; updates deliberately refuse that cleanup.
+
+This is update preparation only: the separate installer helper, WinUI install
+action, bootstrapper/alternate-host process checks, restart and actual in-app
+upgrade acceptance remain pending. A shutdown receipt alone does not prove
+installation succeeded.
 
 After the original engine completes, snapshot reports `PreparedTrialComplete`
 with the cleanup receipt; this is a lifecycle state, not a synthetic live game
