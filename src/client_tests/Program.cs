@@ -3,6 +3,16 @@ using System.Text.Json;
 using System.Diagnostics;
 using Swgoh.Client;
 
+if (args.Length == 2 && args[0] == "--update-lease")
+{
+    try {
+        using var lease = new UpdateLease(args[1]);
+        Console.WriteLine("held");
+        await Console.In.ReadLineAsync();
+    } catch (IOException) { Environment.ExitCode = 2; }
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--endpoint-start")
 {
     var endpoint = await ServerLauncher.EnsureAsync(args[1]);
