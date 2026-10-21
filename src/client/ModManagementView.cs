@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -6,18 +6,20 @@ namespace Swgoh.Client;
 
 internal sealed class ModManagementView : StackPanel
 {
-    private readonly Button choose = new() { Content = "选择 Mod 包" };
-    private readonly Button install = new() { Content = "安装已检查的包", IsEnabled = false };
-    private readonly Button refresh = new() { Content = "刷新列表" };
-    private readonly Button load = new() { Content = "载入", IsEnabled = false };
-    private readonly Button enable = new() { Content = "启用", IsEnabled = false };
-    private readonly Button disable = new() { Content = "停用并恢复", IsEnabled = false };
-    private readonly Button uninstall = new() { Content = "卸载", IsEnabled = false };
-    private readonly Button configure = new() { Content = "配置", IsEnabled = false };
-    private readonly Button startup = new() { Content = "启动设置", IsEnabled = false };
+    private readonly AppBarButton choose = new() { Label = "添加", Icon = new SymbolIcon(Symbol.Add) };
+    private readonly Button install = new() { Content = "安装", IsEnabled = false };
+    private readonly AppBarButton refresh = new() { Label = "刷新", Icon = new SymbolIcon(Symbol.Refresh) };
+    private readonly AppBarButton load = new() { Label = "载入", IsEnabled = false };
+    private readonly AppBarButton enable = new() { Label = "启用", Icon = new SymbolIcon(Symbol.Play), IsEnabled = false };
+    private readonly AppBarButton disable = new() { Label = "停用", Icon = new SymbolIcon(Symbol.Stop), IsEnabled = false };
+    private readonly AppBarButton uninstall = new() { Label = "删除", Icon = new SymbolIcon(Symbol.Delete), IsEnabled = false };
+    private readonly AppBarButton configure = new() { Label = "编辑", Icon = new SymbolIcon(Symbol.Edit), IsEnabled = false };
+    private readonly AppBarButton update = new() { Label = "更新", Icon = new SymbolIcon(Symbol.Download), IsEnabled = false };
+    private readonly AppBarButton startup = new() { Label = "启动设置", Icon = new SymbolIcon(Symbol.Setting), IsEnabled = false };
+    private readonly TextBlock empty = new() { Text = "尚未添加 Mod。点击添加，或将 .bluemilk 文件拖到这里。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 24, 12, 24) };
     private readonly TextBlock package = new() { Text = "选择 .bluemilk 文件以检查内容。", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-    private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 280 };
+    private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 520, MinHeight = 120 };
     private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "Mod 管理",
         Message = "安装不需要连接游戏。载入和启停前，请在概览中连接游戏。" };
     private readonly Func<nint> windowHandle;
@@ -30,38 +32,110 @@ internal sealed class ModManagementView : StackPanel
     internal ModManagementView(Func<nint> windowHandle)
     {
         this.windowHandle = windowHandle;
-        Spacing = 16; Padding = new Thickness(32); MaxWidth = 900;
+        Spacing = 16; Padding = new Thickness(24);
         HorizontalAlignment = HorizontalAlignment.Stretch;
         Children.Add(new TextBlock { Text = "Mod 管理", FontSize = 28 });
         Children.Add(new TextBlock { Text = "客户端与 CLI 共用已安装的 Mod 和运行状态。", TextWrapping = TextWrapping.Wrap });
-        var files = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        files.Children.Add(choose); files.Children.Add(install); Children.Add(files); Children.Add(package);
-        Children.Add(status);
-        Children.Add(new TextBlock { Text = "已安装", FontSize = 20 });
-        Children.Add(refresh); Children.Add(list); Children.Add(detail);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        actions.Children.Add(load); actions.Children.Add(enable); actions.Children.Add(disable); actions.Children.Add(uninstall); Children.Add(actions);
-        actions.Children.Add(configure);
-        actions.Children.Add(startup);
-        Children.Add(new TextBlock { Text = "仅启用可信来源的 Mod。它们在游戏进程中执行；发布者名称和文件摘要不证明作者身份。", TextWrapping = TextWrapping.Wrap });
-        choose.Click += async (_, _) => {
-            try {
-                var picker = new Windows.Storage.Pickers.FileOpenPicker();
-                WinRT.Interop.InitializeWithWindow.Initialize(picker, windowHandle());
-                picker.FileTypeFilter.Add(".bluemilk");
-                var file = await picker.PickSingleFileAsync();
-                if (file != null) await InspectAsync(file.Path);
-            } catch (Exception e) { Failure(e); }
+        var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalContentAlignment = HorizontalAlignment.Left };
+        foreach (var command in new[] { choose, configure, uninstall, update, enable, disable }) commands.PrimaryCommands.Add(command);
+        commands.SecondaryCommands.Add(startup); commands.SecondaryCommands.Add(load); commands.SecondaryCommands.Add(refresh);
+        Children.Add(commands);
+        Children.Add(ColumnRow("名称", "版本", "使用方式", "状态"));
+        Children.Add(list); Children.Add(empty); Children.Add(detail); Children.Add(status);
+        Children.Add(new TextBlock { Text = "拖入 .bluemilk 包即可安装；安装后可选中启用。", TextWrapping = TextWrapping.Wrap });
+        AllowDrop = true;
+        Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        DragOver += (_, e) => {
+            e.AcceptedOperation = !busy && e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)
+                ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            e.Handled = true;
         };
+        Drop += async (_, e) => {
+            var deferral = e.GetDeferral();
+            try {
+                if (busy || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)) return;
+                var items = await e.DataView.GetStorageItemsAsync();
+                var paths = items.OfType<Windows.Storage.StorageFile>().Select(f => f.Path).ToArray();
+                if (paths.Length != items.Count || paths.Length == 0 || paths.Any(p => !p.EndsWith(".bluemilk", StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("请拖入 .bluemilk 文件，不支持文件夹或其他格式。");
+                foreach (var path in paths) await AddPackageAsync(path);
+            } catch (Exception error) { Failure(error); }
+            finally { e.Handled = true; deferral.Complete(); }
+        };
+        choose.Click += async (_, _) => { try { await PickPackageAsync(false); } catch (Exception e) { Failure(e); } };
+        update.Click += async (_, _) => { try { await PickPackageAsync(true); } catch (Exception e) { Failure(e); } };
         install.Click += async (_, _) => { try { await InstallAsync(); } catch { } };
         refresh.Click += async (_, _) => { try { await RefreshAsync(); } catch { } };
         load.Click += async (_, _) => { try { await ChangeAsync("mods-package-register"); } catch { } };
-        enable.Click += async (_, _) => { try { await ChangeAsync("mods-enable"); } catch { } };
+        enable.Click += async (_, _) => { try { await EnableSelectedAsync(); } catch { } };
         disable.Click += async (_, _) => { try { await ChangeAsync("mods-disable"); } catch { } };
-        uninstall.Click += async (_, _) => { try { await ChangeAsync("mods-package-uninstall"); } catch { } };
+        uninstall.Click += async (_, _) => { try { await DeleteSelectedAsync(); } catch { } };
         configure.Click += async (_, _) => { try { await ConfigureAsync(); } catch { } };
         startup.Click += async (_, _) => { try { await StartupAsync(); } catch { } };
         list.SelectionChanged += (_, _) => Update();
+        Loaded += async (_, _) => { if (!busy && !Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke-"))) { try { await RefreshAsync(); } catch { } } };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(list, "mod-list");
+        foreach (var command in new[] { choose, configure, uninstall, update, enable, disable })
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(command, "mod-" + command.Label);
+    }
+
+    private static Grid ColumnRow(string name, string version, string usage, string state)
+    {
+        var grid = new Grid { ColumnSpacing = 16, Padding = new Thickness(12, 10, 12, 10) };
+        foreach (var width in new[] { 2.2, .8, 1.5, 1.4 }) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
+        var values = new[] { name, version, usage, state };
+        for (var i = 0; i < values.Length; i++) {
+            var text = new TextBlock { Text = values[i], TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(text, i); grid.Children.Add(text);
+        }
+        return grid;
+    }
+    private async Task PickPackageAsync(bool updating)
+    {
+        var row = updating ? Selected ?? throw new InvalidOperationException("请先选择 Mod。") : null;
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, windowHandle());
+        picker.FileTypeFilter.Add(".bluemilk");
+        var file = await picker.PickSingleFileAsync();
+        if (file != null) await AddPackageAsync(file.Path, row?.Id, row?.Version);
+    }
+    internal Task AddPackageAsync(string path, string? expectedId = null, string? previousVersion = null) => RunAsync(async service => {
+        var inspected = await service.RequestAsync("mods-package-inspect", new { path });
+        var manifest = inspected.GetProperty("manifest");
+        var id = manifest.GetProperty("id").GetString()!;
+        var version = manifest.GetProperty("version").GetString()!;
+        if (expectedId != null && id != expectedId) throw new InvalidOperationException("更新包不属于所选 Mod。");
+        if (previousVersion != null && CompareVersion(version, previousVersion) <= 0) throw new InvalidOperationException("请选择版本号更高的更新包。");
+        var sha256 = inspected.GetProperty("sha256").GetString();
+        await service.RequestAsync("mods-package-install", new { path, sha256 });
+        await PopulateAsync(service);
+        list.SelectedItem = list.Items.Cast<ListViewItem>().First(x => ((Row)x.Tag).Hash == sha256);
+        status.Title = expectedId == null ? "已添加" : "新版已安装";
+        status.Message = expectedId == null ? "尚未启用。选中后点击启用即可使用。" : "旧版本及配置保留。请断开后在启动设置中选择新版，再重新连接。";
+        status.Severity = InfoBarSeverity.Success;
+        return true;
+    });
+    private static int CompareVersion(string left, string right)
+    {
+        var a = left.Split('.').Select(System.Numerics.BigInteger.Parse).ToArray();
+        var b = right.Split('.').Select(System.Numerics.BigInteger.Parse).ToArray();
+        for (var i = 0; i < 3; i++) { var c = a[i].CompareTo(b[i]); if (c != 0) return c; }
+        return 0;
+    }
+    private async Task EnableSelectedAsync()
+    {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        if (Runtime(row) == null) await ChangeAsync("mods-package-register");
+        await ChangeAsync("mods-enable");
+    }
+    private async Task DeleteSelectedAsync()
+    {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "删除 " + row.Name + "？",
+            Content = "仅删除所选版本 " + row.Version + "。正在使用或已选为启动版本的包需要先解除占用。",
+            PrimaryButtonText = "删除", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && Selected?.Hash == row.Hash)
+            await ChangeAsync("mods-package-uninstall");
     }
 
     private Row? Selected => (list.SelectedItem as ListViewItem)?.Tag as Row;
@@ -81,10 +155,10 @@ internal sealed class ModManagementView : StackPanel
         var native = row == null ? null : Runtime(row);
         var state = native?.GetProperty("state").GetString();
         load.IsEnabled = !busy && gameConnected && row != null && native == null;
-        enable.IsEnabled = !busy && gameConnected && state == "disabled";
+        enable.IsEnabled = !busy && gameConnected && row != null && (native == null || state == "disabled");
         disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
         uninstall.IsEnabled = !busy && row != null;
-        configure.IsEnabled = !busy && row != null;
+        configure.IsEnabled = update.IsEnabled = !busy && row != null;
         startup.IsEnabled = !busy && row != null;
         detail.Text = row == null ? "选择一个 Mod 查看状态。" :
             $"{row.Name}  {row.Version}\n{row.Usage} · {StateName(state)}" +
@@ -165,11 +239,14 @@ internal sealed class ModManagementView : StackPanel
                 manifest.GetProperty("name").GetString()!, manifest.GetProperty("version").GetString()!, usage);
             var startupText = startupSelections.TryGetProperty(row.Id, out var saved) && saved.GetProperty("sha256").GetString() == row.Hash
                 ? (saved.GetProperty("enabled").GetBoolean() ? " · 下次连接启用" : " · 下次连接载入") : "";
-            var entry = new ListViewItem { Content = $"{row.Name}  {row.Version} — {StateName(Runtime(row)?.GetProperty("state").GetString())}{startupText}", Tag = row };
+            var entry = new ListViewItem { Content = ColumnRow(row.Name, row.Version, row.Usage,
+                StateName(Runtime(row)?.GetProperty("state").GetString()) + startupText), Tag = row, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(entry, $"{row.Name} {row.Version} {row.Usage}");
             list.Items.Add(entry);
             if (row.Hash == selected) list.SelectedItem = entry;
         }
         if (list.SelectedItem == null && list.Items.Count > 0) list.SelectedIndex = 0;
+        empty.Visibility = list.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (list.Items.Count == 0) detail.Text = "尚未安装 Mod，请选择一个 .bluemilk 文件。";
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {

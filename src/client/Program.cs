@@ -66,6 +66,7 @@ public sealed partial class ShellApplication : Application
         navigation.MenuItems.Add(modsItem);
         var mods = new ModManagementView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
         var modsView = new ScrollViewer { Content = mods };
+        modsView.SizeChanged += (_, args) => mods.Width = Math.Max(0, args.NewSize.Width);
         var battleItem = new NavigationViewItem { Content = "战斗助手" };
         navigation.MenuItems.Add(battleItem);
         var battle = new BattleInformationView(content, () =>
@@ -117,6 +118,10 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        if (Environment.GetCommandLineArgs().Contains("--smoke-mod-library")) {
+            navigation.SelectedItem = modsItem;
+            _ = SmokeModLibraryAsync(mods);
+        }
         if (Environment.GetCommandLineArgs().Contains("--smoke-profile")) {
             navigation.SelectedItem = modsItem;
             _ = SmokeProfileAsync(mods);
@@ -180,6 +185,27 @@ public sealed partial class ShellApplication : Application
         }
     }
 
+    private async Task SmokeModLibraryAsync(ModManagementView mods)
+    {
+        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
+        try {
+            var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE") ?? throw new IOException("Package required");
+            await mods.AddPackageAsync(package);
+            try { await mods.AddPackageAsync(package, "org.example.wrong", "0.0.1"); throw new IOException("Wrong ID accepted"); }
+            catch (InvalidOperationException e) when (e.Message.Contains("不属于")) { }
+            try { await mods.AddPackageAsync(package, "bluemilk.pro", "0.1.0"); throw new IOException("Same version accepted"); }
+            catch (InvalidOperationException e) when (e.Message.Contains("更高")) { }
+            var update = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_UPDATE_PACKAGE") ?? throw new IOException("Update fixture required");
+            await mods.AddPackageAsync(update, "bluemilk.pro", "0.1.0");
+            if (output != null) await File.WriteAllTextAsync(output + ".ready", "{}");
+            await Task.Delay(20000);
+            await mods.ChangeAsync("mods-package-uninstall");
+            if (output != null) await File.WriteAllTextAsync(output, "{\"library\":true,\"updateValidation\":true,\"deleted\":true}");
+        } catch (Exception e) {
+            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
+        } finally { window?.Close(); }
+    }
+
     private async Task SmokeProfileAsync(ModManagementView mods)
     {
         var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
@@ -221,8 +247,7 @@ public sealed partial class ShellApplication : Application
         try {
             var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
                 ?? throw new InvalidOperationException("Explicit Mod package required.");
-            await mods.InspectAsync(package);
-            await mods.InstallAsync();
+            await mods.AddPackageAsync(package);
             connection.InformationEnabled = false;
             var state = await connection.ConnectAsync();
             if (state.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
@@ -240,7 +265,7 @@ public sealed partial class ShellApplication : Application
                 await mods.ChangeAsync("mods-package-uninstall");
                 if (output != null) await File.WriteAllTextAsync(output + ".uninstalled", "{\"uninstalled\":true}");
                 await Task.Delay(8000);
-                await mods.InstallAsync();
+                await mods.AddPackageAsync(package);
                 mods.SelectMod(modId);
                 await mods.ChangeAsync("mods-package-register");
                 if (output != null) await File.WriteAllTextAsync(output + ".restored", "{\"restored\":true}");
