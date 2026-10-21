@@ -28,7 +28,7 @@ internal static class UpdatePreparation
         }
         cancellation.ThrowIfCancellationRequested();
         // Do not retry: a newly started host or another updater wins this race.
-        var lease = new UpdateLease(serverDirectory);
+        var lease = UpdateLease.AcquireInstallation(serverDirectory);
         try
         {
             if (ServerEndpoint.Read(serverDirectory) != null)

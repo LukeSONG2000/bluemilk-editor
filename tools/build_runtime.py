@@ -12,9 +12,6 @@ RUNTIME = ROOT / "src/runtime"
 sys.path.insert(0, str(RUNTIME))
 from runtime_core import MODULES
 from protobuf_defaults import read_schema_bundle
-from mod_author import pack
-from mod_package import inspect_package
-import tempfile
 
 TRIAL = [
     "runtime_api.js", "unity_scene_api.js", "offline_socket_guard.js",
@@ -59,18 +56,13 @@ def prepare(names_path, schema_path):
             shutil.copyfile(native / name, folder / name)
     (assets / "names.json").write_bytes(names_bytes)
     (trial / "schema.json").write_bytes(schema_bytes)
-    # Build through the same public package format used by third-party authors.
-    (ROOT / "logs").mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=ROOT / "logs") as temporary:
-        for name in ("information", "battle-control", "trial", "game-operations", "ai-analysis"):
-            package = Path(temporary) / (name + ".bluemilk")
-            pack(ROOT / "mods" / name, package)
-            inspect_package(package)
-            shutil.copyfile(package, assets / package.name)
-            if name in ("trial", "battle-control"):
-                shutil.copyfile(package, trial / package.name)
-    manifest(assets, modules + ["names.json", "information.bluemilk", "battle-control.bluemilk", "trial.bluemilk", "game-operations.bluemilk"])
-    manifest(trial, TRIAL + ["schema.json", "trial.bluemilk", "battle-control.bluemilk"])
+    # These directories are generated payloads, never the user's installed store.
+    # Remove stale packages from earlier builds so PyInstaller cannot bundle them.
+    for folder in (assets, trial):
+        for package in folder.glob('*.bluemilk'):
+            package.unlink()
+    manifest(assets, modules + ["names.json"])
+    manifest(trial, TRIAL + ["schema.json"])
     client_data = ROOT / "src/assets"
     client_data.mkdir(exist_ok=True)
     (client_data / "names.json").write_bytes(names_bytes)

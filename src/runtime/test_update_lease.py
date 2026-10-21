@@ -7,7 +7,7 @@ import unittest
 
 import test_paths
 from server_endpoint import EndpointOwner
-from update_lease import UpdateLease
+from update_lease import UpdateLease, global_directory
 
 
 @unittest.skipUnless(os.name == 'nt', 'Windows file sharing semantics required')
@@ -72,6 +72,23 @@ class LeaseTests(unittest.TestCase):
         with UpdateLease(self.root, exclusive=True):
             with self.assertRaises(PermissionError):
                 (self.root / 'update.lock').unlink()
+
+    def test_alternate_endpoint_holds_user_update_gate(self):
+        owner = EndpointOwner(self.root / 'alternate')
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'installation lease'):
+                UpdateLease(global_directory(), exclusive=True)
+        finally:
+            owner.close()
+        with UpdateLease(global_directory(), exclusive=True):
+            for name in ('first', 'second'):
+                result = self.child('from server_endpoint import EndpointOwner; import sys; '
+                    'from pathlib import Path; EndpointOwner(Path(sys.argv[1]) / "' + name + '")')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('installation lease', result.stderr)
+        # Failure to get the global gate must not leak the endpoint-local lease.
+        with UpdateLease(self.root / 'first', exclusive=True):
+            pass
 
 
 if __name__ == '__main__':

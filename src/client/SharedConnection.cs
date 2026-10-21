@@ -55,7 +55,7 @@ internal sealed class SharedConnection : IDisposable
             if (info.TryGetProperty("sessionMode", out var mode)) connection.SessionMode = mode.GetString() ?? "normal";
             connection.SupportsUpdateShutdown =
                 info.TryGetProperty("updateShutdownSupported", out var update) && update.ValueKind == JsonValueKind.True &&
-                info.TryGetProperty("updateLeaseVersion", out var lease) && lease.TryGetInt32(out var leaseVersion) && leaseVersion == 1;
+                info.TryGetProperty("updateLeaseVersion", out var lease) && lease.TryGetInt32(out var leaseVersion) && leaseVersion == 2;
             return connection;
         }
         catch { connection.Dispose(); throw; }

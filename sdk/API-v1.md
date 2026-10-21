@@ -319,16 +319,21 @@ the reservation and keeps the server available for recovery. A successful reply
 is `{ "stopped": true, "reason": "update" }`; the installer must additionally
 wait for the host process to exit. This does not authorize killing any process.
 Old servers without this capability must not fall back to unconditional shutdown.
-Servers advertising `updateLeaseVersion: 1` additionally hold a shared Windows
+Servers advertising `updateLeaseVersion: 2` additionally hold a shared Windows
 file handle on `<endpoint-directory>/update.lock` throughout endpoint ownership.
 After host exit, the installer must acquire that file with read/write access and
 **no sharing**, and hold it throughout package replacement. A host that restarts
 first prevents installation; an installer that acquires first prevents host startup.
 Do not delete the file: only the live handle is ownership, and Windows releases it
 on process exit. The C# `UpdateLease` and Python `update_lease.UpdateLease` share this
-contract. The default endpoint directory is shared across EXE/MSIX and CLI;
-explicit alternate server directories are separate domains and require their own
-quiescence checks before replacing a binary used by those hosts.
+contract. Version 2 also holds a shared handle on
+`<user-profile>/.bluemilk/runtime-update/update.lock`, independent of endpoint
+directory. `UpdatePreparation` acquires both endpoint-local and user-wide
+exclusive handles. A running alternate-endpoint host blocks installation; while
+the user-wide exclusive handle is held, new hosts in any endpoint directory are
+refused. A failed acquisition releases the local lease. This applies to current
+cooperating runtimes; old binaries do not implement this protocol and must be
+closed. Version-1 services are rejected rather than silently accepted.
 
 The C# `UpdatePreparation.AcquireAsync` uses a dedicated authenticated connection,
 requires both update capabilities, sends only guarded shutdown, waits on a retained
@@ -347,8 +352,8 @@ cleanup; updates deliberately refuse that cleanup.
 
 The separate helper is implemented in `src/updater` and included in client builds;
 see its README for job/receipt semantics and same-version deployment evidence.
-WinUI install handoff, cross-version in-app upgrade acceptance and the remaining
-alternate-endpoint startup race are pending. A shutdown receipt alone does not
+WinUI install handoff and cross-version in-app upgrade acceptance are pending.
+A shutdown receipt alone does not
 prove installation succeeded.
 
 After the original engine completes, snapshot reports `PreparedTrialComplete`

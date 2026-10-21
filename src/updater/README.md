@@ -45,7 +45,9 @@ Current evidence includes real same-version EXE and MSIX 0.1.10 deployment and
 restart on the development machine, plus invalid-job and replay rejection. This
 does not establish cross-version upgrade, download-to-install UI integration,
 failure rollback, or arbitrary third-party process compatibility. The WinUI
-install button/job handoff remains to be implemented. Alternate endpoint servers
-have separate lease domains: process scanning catches existing instances but
-does not by itself prevent a new alternate-domain process from starting after
-the scan. That race must be closed before full update acceptance and release.
+install button/job handoff remains to be implemented. Current runtimes hold both
+endpoint-local and user-wide shared update handles; the updater acquires both
+exclusively. This prevents a cooperating alternate-endpoint host from starting
+after process scanning. Old binaries that lack the version-2 user-wide gate must
+be closed; this protocol cannot prevent arbitrary noncooperating executables from
+being launched. A connected version-1 server is explicitly rejected.

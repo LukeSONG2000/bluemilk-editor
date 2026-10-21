@@ -1,6 +1,6 @@
 """Exact installed trial snapshots and leases; no game execution."""
 from pathlib import Path
-from mod_store import directory, locked, _registration, _lease, install
+from mod_store import directory, locked, _registration, _lease
 from mod_profile import _read as read_profile
 from mod_config import _read as read_config
 
@@ -11,15 +11,7 @@ def snapshot(bundled_path, bundled_sha, root=None, *, identity="bluemilk.trial",
         selected = read_profile(root)['selections'].get(identity)
         if selected:
             return _snapshot(root, selected['sha256'], identity, capability)
-    # Installation honors a previous explicit uninstall. Selection is read again
-    # under the store lock, so a concurrent profile change is never half applied.
-    installed = install(bundled_path, bundled_sha, root, bundled=True)
-    with locked(root):
-        selected = read_profile(root)['selections'].get(identity)
-        if not selected and installed.get('suppressed'):
-            raise ValueError(identity + ' Mod was uninstalled; explicitly install it before preparing')
-        sha = selected['sha256'] if selected else bundled_sha
-        return _snapshot(root, sha, identity, capability)
+    raise ValueError(identity + ' is not selected; explicitly install and select the Mod before preparing')
 
 
 def _snapshot(root, sha, identity, capability):

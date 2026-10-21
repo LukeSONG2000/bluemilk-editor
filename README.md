@@ -1,6 +1,11 @@
 # BlueMilk Editor
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
+Editor 不捆绑或自动安装官方 Mod；用户手动安装离线包，并明确选择启用。
+已有用户安装的包及启动配置保留。BlueMilk Pro（`bluemilk-pro`）提供原版辅助；
+BlueMilk Ultra（`bluemilk-ultra`）承载改变玩法的功能，分别独立维护。
+当前 Pro 首段为信息拓展；初始/当前属性的变化来源解释仍待实现。
+仓库地址安装、自动重连和游戏版本动态兼容仍待逐项验收。
 项目正在迁入本仓库；目前包括 WinUI 前端源码及测试、EXE/MSIX 构建脚本、
 共享 app-server/CLI 的 Python 源码、32 个原生适配脚本、包工具、生命周期 registry 和最小示例。
 **构建需要显式提供本地原版名称表和协议 schema，仓库不分发这两份数据；公共 SDK 仍未完整。**

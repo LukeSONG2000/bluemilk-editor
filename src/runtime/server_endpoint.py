@@ -11,7 +11,7 @@ import uuid
 from urllib.parse import urlsplit
 
 import psutil
-from update_lease import UpdateLease
+from update_lease import UpdateLease, global_directory
 
 
 class Blob(ctypes.Structure):
@@ -100,7 +100,9 @@ class EndpointOwner:
         self.kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         name = 'Local\\BlueMilk-AppServer-' + hashlib.sha256(str(self.root).casefold().encode()).hexdigest()
         self.lease = UpdateLease(self.root)
+        self.global_lease = None
         try:
+            self.global_lease = UpdateLease(global_directory())
             self.handle = self.kernel.CreateMutexW(None, False, name)
             if not self.handle:
                 raise OSError(ctypes.get_last_error(), 'Cannot create app-server mutex')
@@ -109,6 +111,8 @@ class EndpointOwner:
                 self.handle = None
                 raise RuntimeError('A shared app-server already owns this endpoint directory')
         except BaseException:
+            if self.global_lease is not None:
+                self.global_lease.close()
             self.lease.close()
             raise
 
@@ -146,3 +150,4 @@ class EndpointOwner:
             self.kernel.CloseHandle(self.handle)
             self.handle = None
             self.lease.close()
+            self.global_lease.close()

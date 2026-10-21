@@ -96,7 +96,7 @@ class AppServer:
                     'sessionMode': 'prepared' if self.session.trials.owns_session else ('normal' if self.game_pid is not None else 'idle'),
                     'sharedRuntime': True, 'remoteEnabled': False,
                     'updateShutdownSupported': True,
-                    'updateLeaseVersion': 1,
+                    'updateLeaseVersion': 2,
                     'disconnectPolicy': 'Frontend disconnect retains shared runtime',
                     'retryPolicy': 'Never replay against a different server instance'}}
             if request.get('method') == 'server.shutdownForUpdate':

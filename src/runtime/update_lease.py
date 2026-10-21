@@ -5,8 +5,14 @@ exclusive lease only after orderly host shutdown; if another host wins that race
 the updater must postpone installation. Stale files never imply a held lease.
 """
 import ctypes
+import os
 from ctypes import wintypes
 from pathlib import Path
+
+
+def global_directory():
+    # Independent of BLUEMILK_SERVER_DIRECTORY and shared by both installations.
+    return Path(os.environ['USERPROFILE']) / '.bluemilk' / 'runtime-update'
 
 
 class UpdateLease:
