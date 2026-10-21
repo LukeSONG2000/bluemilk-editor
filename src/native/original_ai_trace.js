@@ -292,7 +292,7 @@ globalThis.installOriginalAITrace=(context,options={})=>{
   return record;
  }
  function inspect(fn){try{return fn();}catch(e){if(errors.length<10)errors.push(String(e));return null;}}
- const handle={predictionStatus(owner){
+ const handle={status:()=>({stopped,pendingHooks:hooks.length}),predictionStatus(owner){
   if(stopped||options.experimentalPrediction!==true||!owner.equals(context))return null;
   return {experimental:true,timing:'immediately before original AI evaluator',scope:'Recent prediction verification history; not a future-turn forecast or final target selection',failed:predictionFailed,total:predictions.length,
    decisionLimit,observedDecisions:rows.length,unpredictedDecisions:rows.length-predictions.length,droppedDecisions:dropped,

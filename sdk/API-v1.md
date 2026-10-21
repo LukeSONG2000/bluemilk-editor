@@ -485,3 +485,43 @@ metadata can be read (otherwise its address) and the original error as cause.
 No retry or alternate state transition is dispatched by diagnostic handling.
 The earlier empty-battle teardown failure is still unresolved; additional
 instrumentation is not evidence that it has been fixed.
+
+### Original AI decision tracing
+
+`sdk.battle.aiTrace.install()` requires `battle.ai.trace` and acquires a
+current-battle trace resource. Return its handle from the factory, or acquire it
+before `sdk.lifecycle.compose`. The capability is exclusive across enabled Mods.
+The project-maintained `mods/ai-analysis` package is a runnable example:
+
+```js
+module.exports = sdk => sdk.battle.aiTrace.install();
+```
+
+Enable inside an initialized original `BattleGameState`. Enabling at Home fails
+and retains a lifecycle handle for explicit disable/cleanup. The resource binds
+to that battle; it does not automatically follow later battles. Its context is
+retained until hook removal and flush are confirmed. A partial installer failure
+or failed detach retains ownership for retry, rather than reporting restored.
+Legacy prepared `traceAI` cannot run concurrently with this resource.
+
+The `read` command takes `{}` and returns a detached JSON copy:
+`{schemaVersion:1,battleInstanceKey,trace}`. The key can be null if the host does
+not supply battle identity. `trace` contains observed decision rows, original
+decision-tree graphs, random-state observations, copy-audit results and errors.
+The existing observer caps decisions at 128 and reports dropped decisions; this
+is not an unbounded recording or a next-turn prediction. Reads do not evaluate AI.
+The first observed evaluator entry performs the existing private-copy audits;
+tracing has overhead and still needs the planned performance acceptance.
+
+The resource explicitly disables `experimentalPrediction`. Original prediction,
+priority modification and support for additional tree structures remain pending
+SDK/official-Mod migration; this first version does not replace those goals.
+In-process third-party code remains trusted code, not a sandbox.
+
+Original-client acceptance: a private PVE trial produced two original decisions;
+read, disable rejection and re-enable with empty history passed. Cleanup returned
+to Home with definitions/guard/GC restored, no cleanup errors and zero service
+calls. Cross-mode and performance coverage are not established by this test.
+`node tests/ai_trace_mod.mjs` covers capabilities, JSON copies, Home/legacy refusal,
+partial installation, failed detach/context retention and repeated lifecycle.
+The frozen shared host/CLI also verified bundled-package discovery, refusal to enable at Home, explicit cleanup and disconnect with PATH restricted to System32. WinUI visual acceptance remains pending while the independent white-window reproduction is unresolved.

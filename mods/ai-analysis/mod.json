@@ -1,0 +1,13 @@
+{
+  "id": "bluemilk.ai-analysis",
+  "name": "AI 分析（决策记录）",
+  "publisher": "BlueMilk project",
+  "version": "0.1.0",
+  "sdkVersion": 1,
+  "gameProfile": "swgoh-0.40.7",
+  "capabilities": ["battle.ai.trace"],
+  "presentations": ["desktop", "cli"],
+  "dependencies": [],
+  "conflicts": [],
+  "entry": "main.js"
+}
