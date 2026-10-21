@@ -524,4 +524,4 @@ to Home with definitions/guard/GC restored, no cleanup errors and zero service
 calls. Cross-mode and performance coverage are not established by this test.
 `node tests/ai_trace_mod.mjs` covers capabilities, JSON copies, Home/legacy refusal,
 partial installation, failed detach/context retention and repeated lifecycle.
-The frozen shared host/CLI also verified bundled-package discovery, refusal to enable at Home, explicit cleanup and disconnect with PATH restricted to System32. WinUI visual acceptance remains pending while the independent white-window reproduction is unresolved.
+The frozen shared host/CLI also verified bundled-package discovery, refusal to enable at Home, explicit cleanup and disconnect with PATH restricted to System32. A later WinUI retest rendered the connection and Mod-management pages, listed all five bundled Mods, and verified game-operations enable/disable against the shared CLI. The unchanged independent probe also recovered. The intermittent white-window cause remains unproven; this is a successful retest, not a claimed rendering fix or acceptance of every page.
