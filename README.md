@@ -27,6 +27,9 @@ dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
 独立 npm CLI 源码在 `npm/bluemilk`；构建运行时后执行 `tools/build_npm_cli.ps1` 生成 npm 包。
 设置页提供 npm 手动安装命令和给 AI 的安装提示词。
 正式分发仅提供 EXE 安装包，使用 Inno Setup；CLI 从 npm 独立安装。
+首次安装默认选择“为所有用户安装”，获得管理员权限后安装到系统 Program Files。
+也可选择“仅为当前用户安装”，无需提权，默认安装到当前用户的 Programs 目录。
+升级沿用已有安装范围和位置；Mod 包与配置仍按用户分别保存。
 仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
 
 ## 开发共享后端与 CLI
