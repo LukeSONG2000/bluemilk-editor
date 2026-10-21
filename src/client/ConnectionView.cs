@@ -53,6 +53,8 @@ internal sealed class ConnectionView : StackPanel
         if (stopping || !autoAllowed || autoTick || busy || disconnectRequested || DateTime.UtcNow < retryAfter) return;
         autoTick = true;
         try {
+            // A visible Mod page can observe the failed read before this timer does.
+            if (runtime?.IsShared == true && !connected) { await runtime.DetachAsync(); runtime = null; }
             if (runtime != null && connected) {
                 if (!IsPreparedTrial && gamePid.HasValue && !GameExists(gamePid)) {
                     await DisconnectAsync();
