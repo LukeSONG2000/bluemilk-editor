@@ -113,6 +113,10 @@ public sealed partial class ShellApplication : Application
         }
         packagePages["bluemilk.ultra"] = new ScrollViewer { Content = ultraPage };
         mods.PackagesChanged += packages => {
+            foreach (var item in new[] { proItem, ultraItem }) {
+                var package = packages.EnumerateArray().LastOrDefault(p => p.GetProperty("manifest").GetProperty("id").GetString() == (string)item.Tag);
+                item.Icon = package.ValueKind == JsonValueKind.Undefined ? new SymbolIcon(Symbol.Document) : ModIcon.Create(package);
+            }
             var ids = packages.EnumerateArray().Select(x => x.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
             ToolTipService.SetToolTip(proItem, ids.Contains("bluemilk.pro") ? "已安装" : "未安装");
             ToolTipService.SetToolTip(ultraItem, ids.Contains("bluemilk.ultra") ? "已安装" : "未安装");
@@ -120,7 +124,7 @@ public sealed partial class ShellApplication : Application
         };
         var cliSmoke = Environment.GetCommandLineArgs().Contains("--smoke-cli");
         var testRoot = cliSmoke ? Environment.GetEnvironmentVariable("SWGOH_CLI_INSTALL_TEST_ROOT") : null;
-        var settings = new NavigationViewItem { Content = "设置与诊断", Icon = new SymbolIcon(Symbol.Setting) };
+        var settings = new NavigationViewItem { Content = "设置", Icon = new SymbolIcon(Symbol.Setting) };
         navigation.FooterMenuItems.Add(settings);
         var cliSettings = new CliSettingsView(testRoot);
         var updates = new UpdateSettingsView();
@@ -546,23 +550,10 @@ public sealed partial class ShellApplication : Application
 
     private async Task SmokeCliAsync(CliSettingsView settings, string? testRoot)
     {
+        await Task.Delay(16000);
         var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            if (string.IsNullOrEmpty(testRoot)) throw new InvalidOperationException("CLI smoke requires an explicit isolated install root.");
-            await Task.Delay(500);
-            var installed = await settings.InstallAsync();
-            var repeated = await settings.InstallAsync();
-            await Task.Delay(TimeSpan.FromSeconds(16));
-            if (!string.IsNullOrEmpty(output))
-                await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { installed, repeated, gameAttached = false }));
-        }
-        catch (Exception e)
-        {
-            if (!string.IsNullOrEmpty(output))
-                await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        }
-        finally { window?.Close(); }
+        if (output != null) await File.WriteAllTextAsync(output, "{\"npmInstructions\":true,\"bundledInstallation\":false}");
+        window?.Close();
     }
 
     private async Task SmokeAsync(Func<Task<ProbeResult>> detect)

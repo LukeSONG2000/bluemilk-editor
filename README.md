@@ -1,11 +1,11 @@
-# BlueMilk Editor
+﻿# BlueMilk Editor
 
 WinUI 客户端与 `bluemilk` CLI 的 Mod 加载器项目。两端共享 app-server、配置和 Mod 包库。
 Editor 不捆绑或自动安装官方 Mod；用户手动安装离线包，并明确选择启用。
 已有用户安装的包及启动配置保留。BlueMilk Pro（`bluemilk-pro`）提供原版辅助；
 BlueMilk Ultra（`bluemilk-ultra`）承载改变玩法的功能，分别独立维护。
 当前 Pro 首段为信息拓展；初始/当前属性的变化来源解释仍待实现。
-仓库地址安装、自动重连和游戏版本动态兼容仍待逐项验收。
+自动连接与共享服务恢复已接入；仓库地址安装和游戏版本动态兼容仍待逐项验收。
 项目正在迁入本仓库；目前包括 WinUI 前端源码及测试、EXE/MSIX 构建脚本、
 共享 app-server/CLI 的 Python 源码、32 个原生适配脚本、包工具、生命周期 registry 和最小示例。
 **构建需要显式提供本地原版名称表和协议 schema，仓库不分发这两份数据；公共 SDK 仍未完整。**
@@ -23,8 +23,9 @@ dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
 
 这些命令不依赖原复刻仓库；前端可独立编译，测试不连接游戏。
 实际连接需要先按下方步骤构建共享运行时。`build.ps1` 和两个安装打包脚本使用
-`src/dist/SWGoH-Runtime.exe`、`src/dist/bluemilk.exe`、`src/assets/names.json`、
-`src/CLI说明.txt`。前三项由本地构建生成，最后一项已随源码提供。
+`src/dist/SWGoH-Runtime.exe` 和 `src/assets/names.json`。客户端不再捆绑 CLI。
+独立 npm CLI 源码在 `npm/bluemilk`；构建运行时后执行 `tools/build_npm_cli.ps1` 生成 npm 包。
+设置页提供 npm 手动安装命令和给 AI 的安装提示词。
 EXE 打包需要 Inno Setup，MSIX 打包需要对应 Windows SDK，签名证书由构建者自行配置。
 仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
 

@@ -250,6 +250,11 @@ internal sealed class ModManagementView : StackPanel
                 ? (saved.GetProperty("enabled").GetBoolean() ? " · 下次连接启用" : " · 下次连接载入") : "";
             var entry = new ListViewItem { Content = ColumnRow(row.Name, row.Version, row.Usage,
                 StateName(Runtime(row)?.GetProperty("state").GetString()) + startupText), Tag = row, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var columns = (Grid)entry.Content;
+            var label = columns.Children[0]; columns.Children.RemoveAt(0);
+            var nameCell = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            var icon = ModIcon.Create(item); icon.Width = icon.Height = 20;
+            nameCell.Children.Add(icon); nameCell.Children.Add(label); columns.Children.Add(nameCell);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(entry, $"{row.Name} {row.Version} {row.Usage}");
             list.Items.Add(entry);
             if (row.Hash == selected) list.SelectedItem = entry;

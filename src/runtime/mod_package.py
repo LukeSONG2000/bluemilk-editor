@@ -4,6 +4,8 @@ import json
 import re
 import stat
 import zipfile
+import base64
+import struct
 from pathlib import Path
 
 LIMIT = 16 * 1024 * 1024
@@ -61,6 +63,8 @@ def validate_manifest(value):
     if 'configuration' in value:
         from mod_config_schema import validate_schema
         validate_schema(value['configuration'])
+    if 'icon' in value and (not isinstance(value['icon'], str) or not safe_name(value['icon']).endswith('.png')):
+        raise ValueError('Icon must be a package-local PNG path')
     return value
 
 
@@ -87,6 +91,7 @@ def inspect_package(path):
 
 
 def inspect_bytes(raw):
+    icon_base64 = None
     if len(raw) > LIMIT:
         raise ValueError('Package exceeds 16 MiB')
     import io
@@ -133,7 +138,18 @@ def inspect_bytes(raw):
                 raise ValueError('File hash mismatch: ' + name)
             if name == entry:
                 content.decode('utf-8')
+        if 'icon' in manifest:
+            icon = manifest['icon']
+            if icon not in files:
+                raise ValueError('Icon is absent from package inventory')
+            data = archive.read(icon)
+            if (len(data) < 33 or len(data) > 262144 or data[:8] != b'\x89PNG\r\n\x1a\n'
+                    or data[8:16] != b'\x00\x00\x00\rIHDR'
+                    or any(n < 1 or n > 256 for n in struct.unpack('>II', data[16:24]))):
+                raise ValueError('Icon must be a PNG up to 256x256 and 256 KiB')
+            icon_base64 = base64.b64encode(data).decode('ascii')
     return {'manifest': manifest, 'sha256': hashlib.sha256(raw).hexdigest(),
+            'iconBase64': icon_base64,
             'bytes': len(raw), 'expandedBytes': total, 'executed': False,
             'publisherAuthenticated': False,
             'compatibility': 'Manifest checked; installed dependency graph and live game not checked'}

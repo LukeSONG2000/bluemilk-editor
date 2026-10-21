@@ -69,8 +69,8 @@ internal sealed class BattleInformationView : StackPanel
     private void UpdateState()
     {
         syncingInformation = true;
-        try { information.IsOn = connection.InformationEnabled; } finally { syncingInformation = false; }
-        information.IsEnabled = connection.CanRefresh && !changingInformation && !connection.IsPreparedTrial && !connection.IsTrialObserver;
+        try { if (information.IsOn != connection.InformationEnabled) information.IsOn = connection.InformationEnabled; } finally { syncingInformation = false; }
+        information.IsEnabled = connection.IsConnected && !changingInformation && !connection.IsPreparedTrial && !connection.IsTrialObserver;
         connectionHint.Text = connection.IsTrialObserver
             ? "正在观察私人试玩；游戏内信息拓展由试玩宿主管理。"
             : connection.IsConnected ? "已连接，页面可见时每秒刷新选中单位。" : "等待自动连接游戏。";

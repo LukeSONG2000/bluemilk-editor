@@ -1,0 +1,29 @@
+{
+  "name": "bluemilk",
+  "version": "0.1.0",
+  "description": "BlueMilk CLI: shared app-server and Mod management for Windows",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LukeSONG2000/bluemilk-editor.git",
+    "directory": "npm/bluemilk"
+  },
+  "bin": {
+    "bluemilk": "bin/bluemilk.cjs"
+  },
+  "files": [
+    "bin/",
+    "payload/bluemilk.exe",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

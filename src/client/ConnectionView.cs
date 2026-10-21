@@ -155,6 +155,8 @@ internal sealed class ConnectionView : StackPanel
 
     internal async Task SetInformationAsync(bool enabled)
     {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (busy && connected && DateTime.UtcNow < deadline) await Task.Delay(25);
         if (!CanRefresh || runtime == null || IsPreparedTrial || IsTrialObserver)
             throw new InvalidOperationException("正在连接或同步游戏，请稍后重试。");
         busy = true; Buttons();

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$Compiler = (Join-Path $env:LOCALAPPDATA 'Programs/Inno Setup 6/ISCC.exe')
 )
@@ -16,7 +16,7 @@ $stage = Join-Path $outputRoot ('stage-' + [Guid]::NewGuid().ToString('N'))
 & (Join-Path $PSScriptRoot 'build.ps1') -OutputDirectory $stage
 if ($LASTEXITCODE -ne 0) { throw 'Fresh client publish failed.' }
 foreach ($required in @('BlueMilk.Editor.exe','BlueMilk.Editor.dll','BlueMilk.Editor.pri',
-        'App.xbf','runtime/SWGoH-Runtime.exe','packages/agent-cli/bluemilk.exe')) {
+        'App.xbf','runtime/SWGoH-Runtime.exe')) {
     if (!(Test-Path -LiteralPath (Join-Path $stage $required) -PathType Leaf)) { throw "Missing package file: $required" }
 }
 & $Compiler "/DPublishDir=$stage" "/DOutputDir=$outputRoot" "/DAppVersion=$version" (Join-Path $PSScriptRoot 'installer.iss')

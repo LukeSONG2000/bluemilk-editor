@@ -1,99 +1,33 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
-
 namespace Swgoh.Client;
-
 internal sealed class CliSettingsView : StackPanel
 {
-    private readonly CliInstaller installer;
-    private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "尚未安装" };
-    private readonly TextBlock path = new() { IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap };
-    private readonly Button install = new() { Content = "安装随包 CLI" };
-    private readonly Button copy = new() { Content = "复制 CLI 路径", IsEnabled = false };
-    private readonly Button help = new() { Content = "查看使用说明" };
-    private readonly TextBlock guide = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-    private readonly Expander guidePanel;
-    private string? installedExecutable;
-
+    internal const string InstallCommand = "npm install -g bluemilk";
+    internal const string AgentPrompt = "请帮我安装 BlueMilk CLI（Windows x64）。检查 Node.js 与 npm，然后从官方 npm registry 执行 npm install -g bluemilk，运行 bluemilk --version 和 bluemilk --help 验证并报告结果。不要自动连接游戏或执行游戏操作；如缺少 Node.js 或权限，请说明需要我完成的步骤。";
     public CliSettingsView(string? testInstallRoot = null)
     {
         Spacing = 16; Padding = new Thickness(32); MaxWidth = 760;
-        HorizontalAlignment = HorizontalAlignment.Left;
-        var root = testInstallRoot ?? Path.Combine(SharedPaths.LocalAppData, "SWGoH-Tool", "cli");
-        installer = new CliInstaller(Path.Combine(AppContext.BaseDirectory, "packages", "agent-cli"), root);
-        Children.Add(new TextBlock { Text = "AI / CLI", FontSize = 28 });
-        Children.Add(new TextBlock { Text = "为 AI agent 安装独立命令行工具。普通用户无需安装，客户端仍可独立使用。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(status);
-        Children.Add(new TextBlock { Text = "安装位置", FontSize = 16 });
-        Children.Add(path);
-        Children.Add(install); Children.Add(copy); Children.Add(help);
-        Children.Add(new TextBlock { Text = "安装不会启动 CLI、连接游戏或修改 PATH。客户端与 CLI 同时使用时，已有连接会保留，另一方提示占用。", TextWrapping = TextWrapping.Wrap });
-        guidePanel = new Expander { Header = "使用说明", Content = guide, HorizontalAlignment = HorizontalAlignment.Stretch };
-        Children.Add(guidePanel);
-        install.Click += async (_, _) => { try { await InstallAsync(); } catch { /* Shown below. */ } };
-        copy.Click += (_, _) =>
-        {
-            if (installedExecutable == null) return;
-            try
-            {
-                var data = new DataPackage(); data.SetText(installedExecutable); Clipboard.SetContent(data);
-                status.Message = "CLI 路径已复制，可交给 agent。";
-            }
-            catch (Exception e) { ShowFailure(e); }
+        Children.Add(new TextBlock { Text = "CLI", FontSize = 28 });
+        Children.Add(new TextBlock { Text = "客户端不附带 CLI。需要终端或 AI agent 操作时，通过 npm 独立安装。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(new TextBlock { Text = "手动安装", FontSize = 20 });
+        Children.Add(new TextBlock { Text = "需要 Windows x64、Node.js 20 或更高版本及 npm。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(new TextBlock { Text = InstallCommand, IsTextSelectionEnabled = true });
+        AddCopy("复制安装命令", InstallCommand);
+        Children.Add(new TextBlock { Text = "交给 AI 安装", FontSize = 20 });
+        Children.Add(new TextBlock { Text = "复制提示词，交给有本机终端权限的 AI agent。", TextWrapping = TextWrapping.Wrap });
+        AddCopy("复制 AI 安装提示词", AgentPrompt);
+        Children.Add(new TextBlock { Text = "安装后运行 bluemilk --version 验证。安装公开包无需 npm 登录，发布包需要维护者登录。", TextWrapping = TextWrapping.Wrap });
+    }
+    private void AddCopy(string label, string text)
+    {
+        var button = new Button { Content = label };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        button.Click += (_, _) => {
+            try { var data = new DataPackage(); data.SetText(text); Clipboard.SetContent(data); status.Text = "已复制"; }
+            catch (Exception e) { status.Text = "复制失败：" + e.Message; }
         };
-        help.Click += async (_, _) =>
-        {
-            try { guide.Text = await Task.Run(installer.ReadGuide); guidePanel.IsExpanded = true; }
-            catch (Exception e) { ShowFailure(e); }
-        };
-        Loaded += async (_, _) => await RefreshAsync();
-    }
-
-    private async Task RefreshAsync()
-    {
-        install.IsEnabled = false;
-        copy.IsEnabled = false;
-        installedExecutable = null;
-        try
-        {
-            var package = installer.ReadPackage();
-            path.Text = installer.ExecutablePath(package);
-            guide.Text = await Task.Run(installer.ReadGuide);
-            if (await Task.Run(() => installer.IsInstalled(package)))
-            {
-                installedExecutable = path.Text; copy.IsEnabled = true;
-                status.Title = "CLI 已安装"; status.Severity = InfoBarSeverity.Success;
-                status.Message = "可独立运行，不需要保持客户端打开。";
-                install.Content = "校验已安装版本";
-            }
-            else status.Message = "安装随包版本到上方目录；已有其他版本不会被覆盖。";
-            install.IsEnabled = true;
-        }
-        catch (Exception e) { ShowFailure(e); }
-    }
-
-    internal async Task<string> InstallAsync()
-    {
-        install.IsEnabled = false; copy.IsEnabled = false;
-        status.Title = "正在安装"; status.Severity = InfoBarSeverity.Informational;
-        try
-        {
-            installedExecutable = await Task.Run(installer.Install);
-            path.Text = installedExecutable; copy.IsEnabled = true;
-            status.Title = "CLI 已安装"; status.Message = "可独立运行；安装过程未连接游戏。";
-            status.Severity = InfoBarSeverity.Success; install.Content = "校验已安装版本";
-            return installedExecutable;
-        }
-        catch (Exception e) { ShowFailure(e); throw; }
-        finally { install.IsEnabled = true; }
-    }
-
-    private void ShowFailure(Exception error)
-    {
-        status.Title = "CLI 暂不可用"; status.Severity = InfoBarSeverity.Error;
-        status.Message = error is FileNotFoundException or DirectoryNotFoundException
-            ? "未找到完整的可选 CLI 包。这不影响客户端本身运行。"
-            : error.Message;
+        Children.Add(button); Children.Add(status);
     }
 }

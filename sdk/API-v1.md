@@ -578,3 +578,12 @@ calls. Cross-mode and performance coverage are not established by this test.
 `node tests/ai_trace_mod.mjs` covers capabilities, JSON copies, Home/legacy refusal,
 partial installation, failed detach/context retention and repeated lifecycle.
 The frozen shared host/CLI also verified bundled-package discovery, refusal to enable at Home, explicit cleanup and disconnect with PATH restricted to System32. A later WinUI retest rendered the connection and Mod-management pages, listed all five bundled Mods, and verified game-operations enable/disable against the shared CLI. The unchanged independent probe also recovered. The intermittent white-window cause remains unproven; this is a successful retest, not a claimed rendering fix or acceptance of every page.
+
+
+### Optional Mod icon
+
+`mod.json` may declare `"icon": "icon.png"`. The file must be in the package inventory
+and match its SHA-256. PNG only, at most 256 KiB and 256×256 pixels; remote URLs and
+absolute paths are rejected. Omit the property to use the default package icon.
+The desktop uses this icon only in the installed Mod list and enabled-Mod sidebar.
+It is not used as an application icon or inside the Mod feature page.
