@@ -44,6 +44,8 @@ async def fixture(mode, root):
             if mode == 'legacy' and method == 'server.info':
                 reply['result'].pop('updateShutdownSupported')
                 reply['result'].pop('updateLeaseVersion')
+            if mode == 'old-lease' and method == 'server.info':
+                reply['result']['updateLeaseVersion'] = 1
             return reply
 
     server = Server(Runtime(), secrets.token_urlsafe(32))
@@ -110,7 +112,7 @@ async def main(dll, frozen):
                     stdout, stderr = await asyncio.wait_for(child.communicate(b'\n'), 35)
                     assert child.returncode == 2 and b'prepared' not in stdout, (stdout, stderr)
                     assert host.returncode is None
-                    if mode in ('legacy', 'cancel'):
+                    if mode in ('legacy', 'old-lease', 'cancel'):
                         calls = (root / 'calls.jsonl').read_text()
                         assert 'shutdown' not in calls, calls
                     if mode == 'cancel':
@@ -131,8 +133,30 @@ async def main(dll, frozen):
                 await asyncio.wait_for(host.wait(), 10)
             out.close()
 
-    for mode in ('frozen', 'other-client', 'legacy', 'active', 'bad-ack', 'cancel'):
+    for mode in ('frozen', 'other-client', 'legacy', 'old-lease', 'active', 'bad-ack', 'cancel'):
         await run_case(mode)
+    # A different endpoint must block installation, even without a default host.
+    alternate = EndpointOwner(evidence / 'alternate-server')
+    try:
+        child = await asyncio.create_subprocess_exec('dotnet', dll, '--prepare-update', str(evidence / 'empty-server'),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+        stdout, _ = await child.communicate(b'\n')
+        assert child.returncode == 2 and b'prepared' not in stdout
+    finally:
+        alternate.close()
+    child = await asyncio.create_subprocess_exec('dotnet', dll, '--prepare-update', str(evidence / 'empty-server'),
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        assert (await asyncio.wait_for(child.stdout.readline(), 10)).strip() == b'prepared'
+        try: EndpointOwner(evidence / 'new-alternate-server')
+        except RuntimeError: pass
+        else: raise AssertionError('alternate host bypassed C# installation lock')
+    finally:
+        await child.communicate(b'\n')
+    assert child.returncode == 0
+    results['cross-endpoint-csharp-python'] = 'passed'
     (evidence / 'result.json').write_text(json.dumps(results, indent=2))
     print(json.dumps({'evidence':str(evidence),'cases':results}))
 
