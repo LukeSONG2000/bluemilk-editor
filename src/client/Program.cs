@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -58,28 +58,53 @@ public sealed partial class ShellApplication : Application
         var content = new ConnectionView();
         var overviewView = new ScrollViewer { Content = content };
         var navigation = new NavigationView { PaneTitle = "BlueMilk Editor", IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
-            IsSettingsVisible = false, Content = overviewView };
+            IsSettingsVisible = false, PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
+            IsPaneOpen = true, IsPaneToggleButtonVisible = false, OpenPaneLength = 230, Content = overviewView };
         var overview = new NavigationViewItem { Content = "概览", Icon = new SymbolIcon(Symbol.Home) };
         navigation.MenuItems.Add(overview);
         navigation.SelectedItem = overview;
-        var modsItem = new NavigationViewItem { Content = "Mod 管理" };
+        var modsItem = new NavigationViewItem { Content = "Mod 管理", Icon = new SymbolIcon(Symbol.Library) };
         navigation.MenuItems.Add(modsItem);
         var mods = new ModManagementView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
         var modsView = new ScrollViewer { Content = mods };
         modsView.SizeChanged += (_, args) => mods.Width = Math.Max(0, args.NewSize.Width);
         var battleItem = new NavigationViewItem { Content = "战斗助手" };
-        navigation.MenuItems.Add(battleItem);
+        navigation.MenuItems.Add(new NavigationViewItemSeparator());
+        var packageItems = new Dictionary<string, NavigationViewItem>();
+        var packagePages = new Dictionary<string, FrameworkElement>();
         var battle = new BattleInformationView(content, () =>
-            ReferenceEquals(navigation.SelectedItem, battleItem) && window.AppWindow.IsVisible &&
+            (ReferenceEquals(navigation.SelectedItem, battleItem) || (navigation.SelectedItem as NavigationViewItem)?.Tag as string == "bluemilk.pro") && window.AppWindow.IsVisible &&
             !(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
-              presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized));
+              presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized), includeController: false, title: "BlueMilk Pro");
         var battleView = new ScrollViewer { Content = battle };
         var trialItem = new NavigationViewItem { Content = "试玩" };
-        navigation.MenuItems.Add(trialItem);
+
         var trial = new TrialCaptureView(content, () => WinRT.Interop.WindowNative.GetWindowHandle(window));
         var trialView = new ScrollViewer { Content = trial };
-        foreach (var title in new[] { "游戏操作" })
-            navigation.MenuItems.Add(new NavigationViewItem { Content = title, IsEnabled = false });
+        mods.PackagesChanged += packages => {
+            var manifests = packages.EnumerateArray().Select(x => x.GetProperty("manifest").Clone())
+                .GroupBy(x => x.GetProperty("id").GetString()!).ToDictionary(g => g.Key, g => g.First());
+            foreach (var id in packageItems.Keys.Where(id => !manifests.ContainsKey(id)).ToArray()) {
+                if (ReferenceEquals(navigation.SelectedItem, packageItems[id])) navigation.SelectedItem = modsItem;
+                navigation.MenuItems.Remove(packageItems[id]); packageItems.Remove(id); packagePages.Remove(id);
+            }
+            foreach (var pair in manifests.OrderBy(x => x.Value.GetProperty("name").GetString())) {
+                var name = pair.Value.GetProperty("name").GetString()!;
+                if (packageItems.TryGetValue(pair.Key, out var existing)) { existing.Content = name; continue; }
+                var item = new NavigationViewItem { Content = name, Tag = pair.Key, Icon = new SymbolIcon(Symbol.Document) };
+                packageItems.Add(pair.Key, item); navigation.MenuItems.Add(item);
+                if (pair.Key == "bluemilk.pro") packagePages[pair.Key] = battleView;
+                else {
+                    var page = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
+                    page.Children.Add(new TextBlock { Text = name, FontSize = 28 });
+                    page.Children.Add(new TextBlock { Text = "包内功能", FontSize = 20 });
+                    foreach (var capability in pair.Value.GetProperty("capabilities").EnumerateArray())
+                        page.Children.Add(new TextBlock { Text = capability.GetString(), TextWrapping = TextWrapping.Wrap });
+                    page.Children.Add(new TextBlock { Text = "此包尚未接入专属客户端功能页。可在 Mod 管理中编辑、启停，或通过 CLI 使用已提供的接口。", TextWrapping = TextWrapping.Wrap });
+                    packagePages[pair.Key] = new ScrollViewer { Content = page };
+                }
+            }
+        };
         var cliSmoke = Environment.GetCommandLineArgs().Contains("--smoke-cli");
         var testRoot = cliSmoke ? Environment.GetEnvironmentVariable("SWGOH_CLI_INSTALL_TEST_ROOT") : null;
         var settings = new NavigationViewItem { Content = "设置与诊断", Icon = new SymbolIcon(Symbol.Setting) };
@@ -95,7 +120,8 @@ public sealed partial class ShellApplication : Application
             navigation.Content = ReferenceEquals(change.SelectedItem, settings) ? settingsView
                 : ReferenceEquals(change.SelectedItem, trialItem) ? trialView
                 : ReferenceEquals(change.SelectedItem, modsItem) ? modsView
-                : ReferenceEquals(change.SelectedItem, battleItem) ? battleView : overviewView;
+                : ReferenceEquals(change.SelectedItem, battleItem) ? battleView
+                : (change.SelectedItem as NavigationViewItem)?.Tag is string id && packagePages.TryGetValue(id, out var page) ? page : overviewView;
         };
         window.Content = navigation;
         window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1060, 720));
@@ -118,6 +144,10 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke-")))
+            _ = RefreshPackagesAsync();
+        async Task RefreshPackagesAsync() { try { await mods.RefreshAsync(); } catch { } }
+
         if (Environment.GetCommandLineArgs().Contains("--smoke-mod-library")) {
             navigation.SelectedItem = modsItem;
             _ = SmokeModLibraryAsync(mods);

@@ -20,14 +20,14 @@ internal sealed class BattleInformationView : StackPanel
     internal EnemyControlView Controller { get; }
     internal Pivot Sections { get; } = new();
 
-    internal BattleInformationView(ConnectionView connection, Func<bool> visible)
+    internal BattleInformationView(ConnectionView connection, Func<bool> visible, bool includeController = true, string title = "战斗助手")
     {
         this.connection = connection;
         Spacing = 16; Padding = new Thickness(32); MaxWidth = 1000;
         HorizontalAlignment = HorizontalAlignment.Stretch;
         var file = Path.Combine(AppContext.BaseDirectory, "data", "names.json");
         names = File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file))! : new();
-        Children.Add(new TextBlock { Text = "战斗助手", FontSize = 28 });
+        Children.Add(new TextBlock { Text = title, FontSize = 28 });
         Children.Add(information);
         Children.Add(new TextBlock { Text = "需先手动安装 BlueMilk Pro 并在启动设置中选择。游戏内显示血盾数字、敌方技能 CD 和有限状态回合数。", TextWrapping = TextWrapping.Wrap });
         Children.Add(connectionHint);
@@ -38,7 +38,7 @@ internal sealed class BattleInformationView : StackPanel
         attributes.Children.Add(table);
         Controller = new EnemyControlView(connection, names);
         Sections.Items.Add(new PivotItem { Header = "实时属性", Content = attributes });
-        Sections.Items.Add(new PivotItem { Header = "敌方控制", Content = Controller });
+        if (includeController) Sections.Items.Add(new PivotItem { Header = "敌方控制", Content = Controller });
         Children.Add(Sections);
         information.Toggled += (_, _) => connection.InformationEnabled = information.IsOn;
         connection.StateChanged += UpdateState;

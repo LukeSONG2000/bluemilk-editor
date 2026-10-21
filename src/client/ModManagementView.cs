@@ -6,6 +6,7 @@ namespace Swgoh.Client;
 
 internal sealed class ModManagementView : StackPanel
 {
+    internal event Action<JsonElement>? PackagesChanged;
     private readonly AppBarButton choose = new() { Label = "添加", Icon = new SymbolIcon(Symbol.Add) };
     private readonly Button install = new() { Content = "安装", IsEnabled = false };
     private readonly AppBarButton refresh = new() { Label = "刷新", Icon = new SymbolIcon(Symbol.Refresh) };
@@ -36,7 +37,7 @@ internal sealed class ModManagementView : StackPanel
         HorizontalAlignment = HorizontalAlignment.Stretch;
         Children.Add(new TextBlock { Text = "Mod 管理", FontSize = 28 });
         Children.Add(new TextBlock { Text = "客户端与 CLI 共用已安装的 Mod 和运行状态。", TextWrapping = TextWrapping.Wrap });
-        var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalContentAlignment = HorizontalAlignment.Left };
+        var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var command in new[] { choose, configure, uninstall, update, enable, disable }) commands.PrimaryCommands.Add(command);
         commands.SecondaryCommands.Add(startup); commands.SecondaryCommands.Add(load); commands.SecondaryCommands.Add(refresh);
         Children.Add(commands);
@@ -248,6 +249,7 @@ internal sealed class ModManagementView : StackPanel
         if (list.SelectedItem == null && list.Items.Count > 0) list.SelectedIndex = 0;
         empty.Visibility = list.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (list.Items.Count == 0) detail.Text = "尚未安装 Mod，请选择一个 .bluemilk 文件。";
+        PackagesChanged?.Invoke(packages.GetProperty("packages").Clone());
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
