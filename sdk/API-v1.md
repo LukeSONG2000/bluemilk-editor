@@ -345,10 +345,11 @@ retained game ownership, invalid acknowledgments, and cancellation during connec
 setup without leaving a frontend behind. Fixtures do not prove original battle
 cleanup; updates deliberately refuse that cleanup.
 
-This is update preparation only: the separate installer helper, WinUI install
-action, bootstrapper/alternate-host process checks, restart and actual in-app
-upgrade acceptance remain pending. A shutdown receipt alone does not prove
-installation succeeded.
+The separate helper is implemented in `src/updater` and included in client builds;
+see its README for job/receipt semantics and same-version deployment evidence.
+WinUI install handoff, cross-version in-app upgrade acceptance and the remaining
+alternate-endpoint startup race are pending. A shutdown receipt alone does not
+prove installation succeeded.
 
 After the original engine completes, snapshot reports `PreparedTrialComplete`
 with the cleanup receipt; this is a lifecycle state, not a synthetic live game

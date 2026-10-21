@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../client/Version.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../client/UpdateLease.cs" Link="UpdateLease.cs" />
+    <Compile Include="../client/UpdatePreparation.cs" Link="UpdatePreparation.cs" />
+    <Compile Include="../client/SharedConnection.cs" Link="SharedConnection.cs" />
+    <Compile Include="../client/RuntimeConnection.cs" Link="RuntimeConnection.cs" />
+    <Compile Include="../client/ServerEndpoint.cs" Link="ServerEndpoint.cs" />
+    <Compile Include="../client/SharedPaths.cs" Link="SharedPaths.cs" />
+    <Compile Include="../client/ReleaseUpdates.cs" Link="ReleaseUpdates.cs" />
+    <Compile Include="../client/PackageDownloads.cs" Link="PackageDownloads.cs" />
+    <Compile Include="../client/MsixIdentity.cs" Link="MsixIdentity.cs" />
+  </ItemGroup>
+</Project>
