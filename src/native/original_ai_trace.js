@@ -258,7 +258,7 @@ globalThis.readOriginalAITree=tree=>{
 
 globalThis.installOriginalAITrace=(context,options={})=>{
  const decisionLimit=128;
- const R=RuntimeApi,S=SceneApi,A=R.arg,rows=[],errors=[],hooks=[],active=new Map(),trees=new Map();let serial=0,dropped=0;
+ const R=RuntimeApi,S=SceneApi,A=R.arg,rows=[],errors=[],hooks=[],active=new Map(),trees=new Map();let serial=0,dropped=0,stopped=false;
  const predictions=[];let predictionFailed=false;
  let randomCopyAudit=null,targetPoolAudit=null,infrastructureAudit=null,graphCopyAudit=null,inputCopyAudit=null,auditAttempted=false;
  const ref=(p,f)=>R.readRef(p,f),text=p=>S.string(p);
@@ -292,7 +292,22 @@ globalThis.installOriginalAITrace=(context,options={})=>{
   return record;
  }
  function inspect(fn){try{return fn();}catch(e){if(errors.length<10)errors.push(String(e));return null;}}
- function hook(name,count,types,handlers){try{hooks.push(Interceptor.attach(R.findMethod(R.findClass('BattleAbilityAIController'),name,count,types).readPointer(),handlers));}catch(e){for(const h of hooks)h.detach();throw e;}}
+ const handle={predictionStatus(owner){
+  if(stopped||options.experimentalPrediction!==true||!owner.equals(context))return null;
+  return {experimental:true,timing:'immediately before original AI evaluator',scope:'Recent prediction verification history; not a future-turn forecast or final target selection',failed:predictionFailed,total:predictions.length,
+   decisionLimit,observedDecisions:rows.length,unpredictedDecisions:rows.length-predictions.length,droppedDecisions:dropped,
+   history:predictions.slice(-16).map(p=>({sequence:p.sequence,actor:p.actor,result:p.result,matched:p.matched,originalRandomUnchanged:p.originalRandomUnchanged,randomAfterMatched:p.randomAfterMatched,elapsedMs:p.elapsedMs,error:p.error||p.cleanupError||null}))};
+ },snapshot:()=>({kind:'original-ai-trace',scope:'observed original decisions; optional experimental immediate-entry prediction',decisionLimit,rows,trees:Array.from(trees.values(),record=>record.graph),errors,dropped,randomCopyAudit,targetPoolAudit,infrastructureAudit,graphCopyAudit,inputCopyAudit,predictions,predictionFailed}),stop(){stopped=true;active.clear();while(hooks.length){hooks.at(-1).detach();hooks.pop();}}};
+ function hook(name,count,types,handlers){
+  // A callback already queued before detach must not start another audit/read.
+  const guarded=Object.fromEntries(Object.entries(handlers).map(([key,fn])=>[key,function(...args){if(!stopped)return fn.apply(this,args);} ]));
+  try{hooks.push(Interceptor.attach(R.findMethod(R.findClass('BattleAbilityAIController'),name,count,types).readPointer(),guarded));}
+  catch(cause){
+   const error=new Error('AI trace hook installation failed: '+String(cause),{cause});
+   try{handle.stop();}catch(cleanupError){error.cleanupHandle=handle;error.cleanupError=String(cleanupError);}
+   throw error;
+  }
+ }
  hook('GetAbilityAIResult',1,['BattleAbilityAIContext'],{
   onEnter(args){inspect(()=>{
    if(!owns(args[0]))return;
@@ -341,11 +356,5 @@ globalThis.installOriginalAITrace=(context,options={})=>{
    row.results.push({abilityTag:text(ref(args[1],'_choosenAbilityTag')),selectBasic:R.readValue(args[1],'<SelectBasic>k__BackingField','bool'),target:R.readValue(args[1],'_resultTarget','i32')});
   });}
  });
- let stopped=false;
- return {predictionStatus(owner){
-  if(stopped||options.experimentalPrediction!==true||!owner.equals(context))return null;
-  return {experimental:true,timing:'immediately before original AI evaluator',scope:'Recent prediction verification history; not a future-turn forecast or final target selection',failed:predictionFailed,total:predictions.length,
-   decisionLimit,observedDecisions:rows.length,unpredictedDecisions:rows.length-predictions.length,droppedDecisions:dropped,
-   history:predictions.slice(-16).map(p=>({sequence:p.sequence,actor:p.actor,result:p.result,matched:p.matched,originalRandomUnchanged:p.originalRandomUnchanged,randomAfterMatched:p.randomAfterMatched,elapsedMs:p.elapsedMs,error:p.error||p.cleanupError||null}))};
- },snapshot:()=>({kind:'original-ai-trace',scope:'observed original decisions; optional experimental immediate-entry prediction',decisionLimit,rows,trees:Array.from(trees.values(),record=>record.graph),errors,dropped,randomCopyAudit,targetPoolAudit,infrastructureAudit,graphCopyAudit,inputCopyAudit,predictions,predictionFailed}),stop(){if(stopped)return;stopped=true;for(const h of hooks)h.detach();}};
+ return handle;
 };
