@@ -18,6 +18,7 @@ internal sealed class SharedConnection : IDisposable
     internal int HostPid { get; private set; }
     internal int? GamePid { get; private set; }
     internal string SessionMode { get; private set; } = "normal";
+    internal bool SupportsUpdateShutdown { get; private set; }
 
     internal static Uri ValidateEndpoint(string endpoint)
     {
@@ -29,7 +30,7 @@ internal sealed class SharedConnection : IDisposable
     }
 
     internal static async Task<SharedConnection> OpenAsync(string endpoint, string token,
-        string? expectedInstance = null, int? expectedPid = null)
+        string? expectedInstance = null, int? expectedPid = null, CancellationToken cancellation = default)
     {
         var uri = ValidateEndpoint(endpoint);
         if (token.Length < 32 || token.Any(c => c > 127 || char.IsControl(c)))
@@ -39,7 +40,8 @@ internal sealed class SharedConnection : IDisposable
         {
             connection.socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
             connection.socket.Options.Proxy = null;
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            deadline.CancelAfter(TimeSpan.FromSeconds(20));
             await connection.socket.ConnectAsync(uri, deadline.Token);
             connection.receiver = Task.Run(() => connection.ReceiveLoopAsync(connection.lifetime.Token));
             var info = await connection.ExchangeAsync("server.info", null).WaitAsync(deadline.Token);
@@ -51,6 +53,9 @@ internal sealed class SharedConnection : IDisposable
             if (info.TryGetProperty("gamePid", out var pid) && pid.ValueKind == JsonValueKind.Number)
                 connection.GamePid = pid.GetInt32();
             if (info.TryGetProperty("sessionMode", out var mode)) connection.SessionMode = mode.GetString() ?? "normal";
+            connection.SupportsUpdateShutdown =
+                info.TryGetProperty("updateShutdownSupported", out var update) && update.ValueKind == JsonValueKind.True &&
+                info.TryGetProperty("updateLeaseVersion", out var lease) && lease.TryGetInt32(out var leaseVersion) && leaseVersion == 1;
             return connection;
         }
         catch { connection.Dispose(); throw; }
@@ -58,6 +63,18 @@ internal sealed class SharedConnection : IDisposable
 
     internal Task<JsonElement> RequestAsync(string operation, object? payload) =>
         ExchangeAsync("runtime.call", new { instance, operation, payload });
+
+    // Use a dedicated connection: a timeout has an unknown outcome and must not
+    // be followed by another exchange or an unconditional shutdown fallback.
+    internal async Task ShutdownForUpdateAsync()
+    {
+        if (!SupportsUpdateShutdown)
+            throw new InvalidOperationException("当前运行服务不支持安全更新退出；请先正常关闭旧服务。");
+        var result = await ExchangeAsync("server.shutdownForUpdate", new { instance });
+        if (!result.TryGetProperty("stopped", out var stopped) || stopped.ValueKind != JsonValueKind.True ||
+            !result.TryGetProperty("reason", out var reason) || reason.GetString() != "update")
+            throw new IOException("服务未确认更新退出，未开始安装。");
+    }
 
     private async Task<JsonElement> ExchangeAsync(string method, object? parameters)
     {

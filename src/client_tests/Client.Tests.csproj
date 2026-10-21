@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../client/UpdateLease.cs" Link="UpdateLease.cs" />
+    <Compile Include="../client/UpdatePreparation.cs" Link="UpdatePreparation.cs" />
     <Compile Include="../client/ReleaseUpdates.cs" Link="ReleaseUpdates.cs" />
     <Compile Include="../client/PackageDownloads.cs" Link="PackageDownloads.cs" />
     <Compile Include="../client/MsixIdentity.cs" Link="MsixIdentity.cs" />
