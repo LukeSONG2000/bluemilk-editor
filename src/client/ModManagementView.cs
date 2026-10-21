@@ -144,6 +144,13 @@ internal sealed class ModManagementView : StackPanel
         var file = await picker.PickSingleFileAsync();
         if (file != null) await AddPackageAsync(file.Path, row?.Id, row?.Version);
     }
+    internal void ImportFailure(Exception error) => Failure(error);
+    internal async Task InstallFromActivationAsync(string path) {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (busy && DateTime.UtcNow < deadline) await Task.Delay(25);
+        if (busy) throw new InvalidOperationException("正在处理其他 Mod，请稍后再打开此文件。");
+        await AddPackageAsync(path);
+    }
     internal Task AddPackageAsync(string path, string? expectedId = null, string? previousVersion = null) => RunAsync(async service => {
         var inspected = await service.RequestAsync("mods-package-inspect", new { path });
         var manifest = inspected.GetProperty("manifest");

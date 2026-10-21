@@ -32,6 +32,10 @@ dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
 首次安装默认选择“为所有用户安装”，获得管理员权限后安装到系统 Program Files。
 也可选择“仅为当前用户安装”，无需提权，默认安装到当前用户的 Programs 目录。
 升级沿用已有安装范围和位置；Mod 包与配置仍按用户分别保存。
+安装器注册 `.bluemilk` 文件关联及独立的单杯蓝奶文件图标。双击 Mod 包会
+打开 Editor 并安装到包库，已运行时复用原窗口；安装不会自动启用 Mod。
+命令行文件入口为 `BlueMilk.Editor.exe --install-mod "完整路径.bluemilk"`，
+与“添加”和拖放使用同一套完整性检查，不执行包入口。
 仓库中的应用 ICO 为用户要求重绘的像素图标，原游戏头像参考图片未迁入。
 
 ## 开发共享后端与 CLI

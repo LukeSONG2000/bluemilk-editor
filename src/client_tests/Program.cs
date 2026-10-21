@@ -284,4 +284,14 @@ Check(!CapturePresentation.Read(default).Saved, "missing capture does not become
 Check(!CapturePresentation.Read(JsonSerializer.SerializeToElement(new {
     capture = new { path = "bad.pb", bytes = -1, sha256 = new string('a',64) }
 })).Saved, "invalid byte count not displayed as saved");
+var milkPath = Path.Combine(root, "蓝奶 空格", "Pro.BLUEMILK");
+Check(PackageOpenArguments.Parse(["--install-mod", milkPath]).Single() == milkPath, "shell file path keeps Unicode, spaces and extension case");
+Check(PackageOpenArguments.Parse([milkPath, milkPath.ToLowerInvariant()]).Length == 1, "duplicate file activation paths collapsed");
+Check(PackageOpenArguments.FromCommandLine($"\"D:\\Program Files\\BlueMilk Editor\\BlueMilk.Editor.exe\" --install-mod \"{milkPath}\"").SequenceEqual(new[] { "--install-mod", milkPath }), "redirect parses a quoted executable and package path");
+Check(PackageOpenArguments.FromCommandLine($"--install-mod \"{milkPath}\"").SequenceEqual(new[] { "--install-mod", milkPath }), "redirect accepts arguments without executable prefix");
+Check(PackageOpenArguments.Parse([]).Length == 0, "plain launch opens without installing a package");
+foreach (var invalid in new[] { new[] { "--install-mod" }, new[] { "--install-mod", "relative.bluemilk" }, new[] { "--install-mod", Path.Combine(root,"bad.exe") }, new[] { "--install-mod", milkPath, "--enable" } }) {
+    try { PackageOpenArguments.Parse(invalid); throw new Exception("invalid package activation accepted"); }
+    catch (ArgumentException) { passed++; }
+}
 Console.WriteLine(JsonSerializer.Serialize(new { passed, root }));

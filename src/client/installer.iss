@@ -32,6 +32,7 @@ DisableProgramGroupPage=yes
 CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
+ChangesAssociations=yes
 UninstallDisplayName=BlueMilk Editor
 
 [Files]
@@ -39,6 +40,13 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignorever
 
 [Icons]
 Name: "{autoprograms}\BlueMilk Editor"; Filename: "{app}\BlueMilk.Editor.exe"; WorkingDir: "{app}"
+
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.bluemilk"; ValueType: string; ValueName: ""; ValueData: "BlueMilk.ModPackage"; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.bluemilk\OpenWithProgids"; ValueType: string; ValueName: "BlueMilk.ModPackage"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\BlueMilk.ModPackage"; ValueType: string; ValueName: ""; ValueData: "BlueMilk Mod 包"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\BlueMilk.ModPackage\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\Assets\mod-package.ico"",0"
+Root: HKA; Subkey: "Software\Classes\BlueMilk.ModPackage\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\BlueMilk.Editor.exe"" --install-mod ""%1"""
 
 [Run]
 Filename: "{app}\BlueMilk.Editor.exe"; Description: "Launch BlueMilk Editor"; Flags: nowait postinstall skipifsilent

@@ -14,6 +14,7 @@ internal static class Program
         {
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Trace("ComWrappers ready");
+        if (PackageActivation.RedirectIfNeeded()) return;
         Application.Start(parameters =>
         {
             Trace("Application.Start callback");
@@ -199,6 +200,20 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        var importGate = new SemaphoreSlim(1,1);
+        async Task OpenPackagesAsync(string[] arguments) {
+            await importGate.WaitAsync();
+            try {
+                if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();
+                window.Activate();
+                var paths = PackageOpenArguments.Parse(arguments);
+                if (paths.Length == 0) return;
+                navigation.SelectedItem = modsItem;
+                foreach (var path in paths) await mods.InstallFromActivationAsync(path);
+            } catch (Exception error) { mods.ImportFailure(error); }
+            finally { importGate.Release(); }
+        }
+        PackageActivation.Ready(arguments => window.DispatcherQueue.TryEnqueue(() => _ = OpenPackagesAsync(arguments)));
         if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke"))) content.StartAutomaticConnection();
         if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke-")))
             _ = RefreshPackagesAsync();
