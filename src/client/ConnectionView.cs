@@ -110,8 +110,7 @@ internal sealed class ConnectionView : StackPanel
                 : RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
             IsPreparedTrial = runtime.SharedSessionMode == "prepared";
             if (runtime.IsShared && runtime.SharedGamePid.HasValue && !IsPreparedTrial && !GameExists(runtime.SharedGamePid)) {
-                await runtime.RequestAsync("disconnect");
-                await runtime.DetachAsync();
+                await runtime.CloseAsync();
                 runtime = await OpenSharedAsync();
             }
             Buttons();
