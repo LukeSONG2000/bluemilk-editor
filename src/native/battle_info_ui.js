@@ -88,8 +88,11 @@ globalThis.installBattleInfo=()=>{
   const shield=barColor(bars.shield),bonus=barColor(bars.bonus);
   const healthLine='['+hp+']'+read('CurrentHP')+'[-]/['+full+']'+read('MaxHP')+'[-]';
   const bonusCurrent=read('CurrentBonusShield');
-  const shieldLine=(bonusCurrent===0?'':'['+bonus+']'+bonusCurrent+'/'+read('MaxBonusShield')+'[-]    ')+
-   '['+shield+']'+read('CurrentPermanentShield')+'/'+read('MaxPermanentShield')+'[-]';
+  const permanentMax=read('MaxPermanentShield');
+  const shieldLine=[
+   bonusCurrent===0?'':'['+bonus+']'+bonusCurrent+'/'+read('MaxBonusShield')+'[-]',
+   permanentMax===0?'':'['+shield+']'+read('CurrentPermanentShield')+'/'+permanentMax+'[-]'
+  ].filter(Boolean).join('    ');
   // Popup bars place protection above health; the target HUD does the reverse.
   return (shieldAbove?[shieldLine,healthLine]:[healthLine,shieldLine]).join('\n');
  }
