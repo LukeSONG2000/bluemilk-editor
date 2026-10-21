@@ -86,12 +86,14 @@ globalThis.installBattleInfo=()=>{
   const read=n=>R.unbox(call('BattleUnitController','get_'+n,unit),'i32');
   const hp=deriveHealthColor?nativeColor(call('UnitHealthBar','GetHealthColor',healthComponent,[A.value('f32',read('MaxHP')>0?read('CurrentHP')/read('MaxHP'):0)])):barColor(bars.health),full=nativeColor(call('UnitHealthBar','GetHealthColor',healthComponent,[A.value('f32',1)]));
   const shield=barColor(bars.shield),bonus=barColor(bars.bonus);
-  const healthLine='['+hp+']'+read('CurrentHP')+'[-]/['+full+']'+read('MaxHP')+'[-]';
+  const pair=(current,max,currentColor,maxColor=currentColor)=>
+   '['+currentColor+']'+current+'[-][FFFFFF]/[-]['+maxColor+']'+max+'[-]';
+  const healthLine=pair(read('CurrentHP'),read('MaxHP'),hp,full);
   const bonusCurrent=read('CurrentBonusShield');
   const permanentMax=read('MaxPermanentShield');
   const shieldLine=[
-   bonusCurrent===0?'':'['+bonus+']'+bonusCurrent+'/'+read('MaxBonusShield')+'[-]',
-   permanentMax===0?'':'['+shield+']'+read('CurrentPermanentShield')+'/'+permanentMax+'[-]'
+   bonusCurrent===0?'':pair(bonusCurrent,read('MaxBonusShield'),bonus),
+   permanentMax===0?'':pair(read('CurrentPermanentShield'),permanentMax,shield)
   ].filter(Boolean).join('    ');
   // Popup bars place protection above health; the target HUD does the reverse.
   return (shieldAbove?[shieldLine,healthLine]:[healthLine,shieldLine]).join('\n');

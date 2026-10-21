@@ -59,7 +59,7 @@ public sealed partial class ShellApplication : Application
         var preferences = new DashboardPreferences();
         var dashboard = new DashboardView(content, preferences);
         var overviewView = new ScrollViewer { Content = dashboard };
-        var navigation = new NavigationView { IsTitleBarAutoPaddingEnabled = false, IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
+        var navigation = new NavigationView { AlwaysShowHeader = false, IsTitleBarAutoPaddingEnabled = false, IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
             IsSettingsVisible = false, PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
             IsPaneOpen = true, IsPaneToggleButtonVisible = false, OpenPaneLength = 230, Content = overviewView };
         var overview = new NavigationViewItem { Content = "主页", Icon = new SymbolIcon(Symbol.Home) };
@@ -118,7 +118,7 @@ public sealed partial class ShellApplication : Application
         var proPage = new ModDetailView("BlueMilk Pro", battle, proFeatures, preferences);
         battleView.Content = proPage;
         packagePages["bluemilk.pro"] = battleView;
-        var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
+        var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24,8,24,24) };
 
         var ultraStatus = new InfoBar { IsOpen = true, IsClosable = false, Title = "开发中 · 未安装", Message = "现有玩法扩展正在迁入 Ultra，尚未发布可安装包。" };
         ultraPage.Children.Add(ultraStatus);
@@ -152,7 +152,7 @@ public sealed partial class ShellApplication : Application
         navigation.FooterMenuItems.Add(settings);
         var cliSettings = new CliSettingsView(testRoot);
         var updates = new UpdateSettingsView();
-        var settingsContent = new StackPanel { Spacing = 16, Padding = new Thickness(32,24,32,32) };
+        var settingsContent = new StackPanel { Spacing = 16, Padding = new Thickness(24,8,24,24) };
         updates.Padding = cliSettings.Padding = new Thickness(0);
         updates.MaxWidth = cliSettings.MaxWidth = double.PositiveInfinity;
         updates.HorizontalAlignment = cliSettings.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -173,7 +173,10 @@ public sealed partial class ShellApplication : Application
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var titlebar = new Grid { Height = 48, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
-        titlebar.Children.Add(new TextBlock { Text = "BlueMilk Editor", FontSize = 14, Margin = new Thickness(20,0,160,0), VerticalAlignment = VerticalAlignment.Center });
+        titlebar.Children.Add(new Image { Width = 20, Height = 20,
+            Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "titlebar-icon.png"))),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16,0,0,0) });
+        titlebar.Children.Add(new TextBlock { Text = "BlueMilk Editor", FontSize = 14, Margin = new Thickness(48,0,160,0), VerticalAlignment = VerticalAlignment.Center });
         shell.Children.Add(titlebar); Grid.SetRow(navigation, 1); shell.Children.Add(navigation);
         navigation.Resources["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         navigation.Resources["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);

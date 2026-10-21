@@ -34,7 +34,7 @@ internal sealed class ModManagementView : StackPanel
     internal ModManagementView(Func<nint> windowHandle)
     {
         this.windowHandle = windowHandle;
-        Spacing = 16; Padding = new Thickness(24);
+        Spacing = 16; Padding = new Thickness(24, 8, 24, 24);
         HorizontalAlignment = HorizontalAlignment.Stretch;
         var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var command in new[] { choose, configure, uninstall, update }) commands.PrimaryCommands.Add(command);

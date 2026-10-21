@@ -26,7 +26,7 @@ internal sealed class TrialCaptureView : StackPanel
     internal TrialCaptureView(ConnectionView connection, Func<nint> windowHandle)
     {
         this.connection = connection;
-        Spacing = 16; Padding = new Thickness(32); MaxWidth = 1000;
+        Spacing = 16; Padding = new Thickness(24, 8, 24, 24); MaxWidth = 1000;
         Children.Add(new TextBlock { Text = "私人试玩", FontSize = 28 });
         Children.Add(new TextBlock { Text = "先断开普通游戏连接再启动试玩。关闭窗口保留试玩，可由客户端或 CLI 接手；停止后恢复酒馆。", TextWrapping = TextWrapping.Wrap });
         Children.Add(manifest);

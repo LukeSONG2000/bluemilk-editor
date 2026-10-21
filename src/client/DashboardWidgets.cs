@@ -96,7 +96,7 @@ internal sealed class DashboardView : StackPanel
     private HashSet<string> enabled = new();
     internal DashboardView(ConnectionView connection, DashboardPreferences preferences) {
         this.connection = connection; this.preferences = preferences;
-        Spacing = 24; Padding = new Thickness(32, 24, 32, 32);
+        Spacing = 24; Padding = new Thickness(24, 8, 24, 24);
         Children.Add(FluentSurface.Card(connection)); Children.Add(shortcuts);
         preferences.Changed += Rebuild;
         connection.StateChanged += () => { foreach (var w in widgets) w.Refresh(connection.IsConnected); };
@@ -125,7 +125,7 @@ internal sealed class ModDetailView : StackPanel
     private readonly TextBlock metadata = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     private readonly TextBlock description = new() { TextWrapping = TextWrapping.Wrap };
     internal ModDetailView(string title, FrameworkElement configuration, DashboardFeature[] features, DashboardPreferences preferences) {
-        Spacing = 20; Padding = new Thickness(32,24,32,32); name.Text = title;
+        Spacing = 20; Padding = new Thickness(24,8,24,24); name.Text = title;
         var text = new StackPanel { Spacing = 4 }; text.Children.Add(name); text.Children.Add(metadata);
         var header = new Grid { ColumnSpacing = 16 }; header.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); header.ColumnDefinitions.Add(new() { Width = new GridLength(1,GridUnitType.Star) });
         header.Children.Add(icon); Grid.SetColumn(text,1); header.Children.Add(text); Children.Add(header); Children.Add(description);
@@ -137,7 +137,10 @@ internal sealed class ModDetailView : StackPanel
             visibility.Children.Add(check);
         }
         if (features.Length > 0) Children.Add(new Expander { Header = "主页快捷访问", Content = visibility, HorizontalContentAlignment = HorizontalAlignment.Stretch, HorizontalAlignment = HorizontalAlignment.Stretch });
-        configuration.Margin = new Thickness(0); if (configuration is Panel p) { if(p is StackPanel s) s.Padding = new Thickness(0); }
+        configuration.Margin = new Thickness(0);
+        configuration.MaxWidth = double.PositiveInfinity;
+        configuration.HorizontalAlignment = HorizontalAlignment.Stretch;
+        if (configuration is StackPanel s) s.Padding = new Thickness(0);
         Children.Add(configuration);
     }
     internal void Package(JsonElement package) {
