@@ -319,9 +319,20 @@ the reservation and keeps the server available for recovery. A successful reply
 is `{ "stopped": true, "reason": "update" }`; the installer must additionally
 wait for the host process to exit. This does not authorize killing any process.
 Old servers without this capability must not fall back to unconditional shutdown.
-This is the transport prerequisite only: the client install/restart coordinator,
-exclusive update lease across host launches, and actual in-app upgrade acceptance
-are still pending. A shutdown receipt alone does not prove installation succeeded.
+Servers advertising `updateLeaseVersion: 1` additionally hold a shared Windows
+file handle on `<endpoint-directory>/update.lock` throughout endpoint ownership.
+After host exit, the installer must acquire that file with read/write access and
+**no sharing**, and hold it throughout package replacement. A host that restarts
+first prevents installation; an installer that acquires first prevents host startup.
+Do not delete the file: only the live handle is ownership, and Windows releases it
+on process exit. The C# `UpdateLease` and Python `update_lease.UpdateLease` share this
+contract. The default endpoint directory is shared across EXE/MSIX and CLI;
+explicit alternate server directories are separate domains and require their own
+quiescence checks before replacing a binary used by those hosts.
+
+This is the transport and locking prerequisite only: the client install/restart
+coordinator and actual in-app upgrade acceptance are still pending. A shutdown
+receipt alone does not prove installation succeeded.
 
 After the original engine completes, snapshot reports `PreparedTrialComplete`
 with the cleanup receipt; this is a lifecycle state, not a synthetic live game

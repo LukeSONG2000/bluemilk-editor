@@ -11,6 +11,7 @@ import uuid
 from urllib.parse import urlsplit
 
 import psutil
+from update_lease import UpdateLease
 
 
 class Blob(ctypes.Structure):
@@ -98,13 +99,18 @@ class EndpointOwner:
         self.kernel.ReleaseMutex.argtypes = [wintypes.HANDLE]
         self.kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         name = 'Local\\BlueMilk-AppServer-' + hashlib.sha256(str(self.root).casefold().encode()).hexdigest()
-        self.handle = self.kernel.CreateMutexW(None, False, name)
-        if not self.handle:
-            raise OSError(ctypes.get_last_error(), 'Cannot create app-server mutex')
-        if self.kernel.WaitForSingleObject(self.handle, 0) not in (0, 0x80):
-            self.kernel.CloseHandle(self.handle)
-            self.handle = None
-            raise RuntimeError('A shared app-server already owns this endpoint directory')
+        self.lease = UpdateLease(self.root)
+        try:
+            self.handle = self.kernel.CreateMutexW(None, False, name)
+            if not self.handle:
+                raise OSError(ctypes.get_last_error(), 'Cannot create app-server mutex')
+            if self.kernel.WaitForSingleObject(self.handle, 0) not in (0, 0x80):
+                self.kernel.CloseHandle(self.handle)
+                self.handle = None
+                raise RuntimeError('A shared app-server already owns this endpoint directory')
+        except BaseException:
+            self.lease.close()
+            raise
 
     def publish(self, uri, instance, token):
         if self.instance is not None or self.handle is None:
@@ -139,3 +145,4 @@ class EndpointOwner:
             self.kernel.ReleaseMutex(self.handle)
             self.kernel.CloseHandle(self.handle)
             self.handle = None
+            self.lease.close()
