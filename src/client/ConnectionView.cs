@@ -170,6 +170,11 @@ internal sealed class ConnectionView : StackPanel
         finally { busy=false; }
     }
 
+    internal async Task<JsonElement> FontAsync(string id,string hash,string family) {
+        if(runtime==null||!connected)throw new InvalidOperationException("连接游戏后读取原版字体。");
+        return await runtime.RequestAsync("mods-font",new {id,sha256=hash,family});
+    }
+
     internal async Task<JsonElement> PrepareTrialAsync(object payload)
     {
         if (busy || runtime != null) throw new InvalidOperationException("请先断开当前连接。");

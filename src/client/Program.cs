@@ -72,6 +72,7 @@ public sealed partial class ShellApplication : Application
         var enabled=new HashSet<string>();
         void ShowEnabled() {
             foreach(var (id,page) in pages) {
+                page.Components.HostEnabled(enabled.Contains(id));
                 if(enabled.Contains(id)) {if(!navigation.MenuItems.Contains(page.Item))navigation.MenuItems.Add(page.Item);}
                 else {if(ReferenceEquals(navigation.SelectedItem,page.Item))navigation.SelectedItem=management;navigation.MenuItems.Remove(page.Item);}
             }
@@ -93,7 +94,7 @@ public sealed partial class ShellApplication : Application
                 var item=new NavigationViewItem {Content=title,Tag=id,Icon=ModIcon.Create(package)};
                 var components=new ModPageView(connection,manifest,hash,
                     ()=>ReferenceEquals(navigation.SelectedItem,item)&&window.AppWindow.IsVisible&&!(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter op&&op.State==Microsoft.UI.Windowing.OverlappedPresenterState.Minimized),
-                    ()=>ReferenceEquals(navigation.SelectedItem,home),()=>navigation.SelectedItem=item,preferences);
+                    ()=>ReferenceEquals(navigation.SelectedItem,home)&&window.AppWindow.IsVisible&&!(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter hp&&hp.State==Microsoft.UI.Windowing.OverlappedPresenterState.Minimized),()=>navigation.SelectedItem=item,preferences);
                 var detail=new ModDetailView(title,components,components.Features,preferences);detail.Package(package);
                 pages[id]=(hash,item,components,detail,new ScrollViewer {Content=detail});
                 dashboard.Register(id,title,components.Features);
@@ -132,6 +133,7 @@ public sealed partial class ShellApplication : Application
             try {await connection.CloseWindowConnectionAsync();allowingClose=true;window.Close();}catch { }
         };
         window.Activate();
+        window.Closed+=(_,_)=>{foreach(var page in pages.Values)page.Components.Dispose();GameFonts.ReleaseAll();};
         var importGate=new SemaphoreSlim(1,1);
         async Task OpenPackagesAsync(string[] arguments) {
             await importGate.WaitAsync();

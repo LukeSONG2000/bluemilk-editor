@@ -37,6 +37,18 @@ class DesktopTests(unittest.TestCase):
         result=subprocess.run(['node','-e',"const m={exports:{}};new Function('module','exports',"+json.dumps(source)+")(m,m.exports);console.log(m.exports)"],capture_output=True,text=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(result.stdout.strip(),'16')
 
+    def test_floating_theme_and_selection_are_bounded_data(self):
+        data=self.schema();feature=data['features'][0]
+        feature.update(kind='select',description='Repair',options=[{'value':'original','label':'Original'}])
+        validate(data)
+        feature['options']*=2
+        with self.assertRaises(ValueError):validate(data)
+        feature.update(kind='table',columns=[{'key':'current','title':'Current'}],options=[])
+        feature['floating']={'background':'#EE243448','foreground':'#FFFFFFFF','border':'#FF52CCF6','fontFamily':'Arial','fontSize':16}
+        validate(data)
+        feature['floating']['fontFamily']='x'*129
+        with self.assertRaises(ValueError):validate(data)
+
     def test_queries_require_enabled_declared_query_and_cannot_dispatch_game_actions(self):
         manifest={'id':'org.example.sample','desktop':self.schema()}
         runtime=SimpleNamespace(call_args=Mock(side_effect=lambda op,*a:

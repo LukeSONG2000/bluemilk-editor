@@ -9,7 +9,7 @@ namespace Swgoh.Client;
 internal enum WidgetKind { Toggle, Button, Select, List }
 // The editor owns controls; adapters bind them to the same runtime operations as CLI.
 internal sealed record DashboardFeature(string Id, string Title, WidgetKind Kind,
-    Func<object?> Read, Func<object?, Task>? Write = null, string[]? Options = null);
+    Func<object?> Read, Func<object?, Task>? Write = null, string[]? Options = null, Func<FrameworkElement>? CreateView = null);
 
 internal sealed class DashboardPreferences
 {
@@ -114,9 +114,12 @@ internal sealed class DashboardView : StackPanel
         foreach (var (id, items) in features.Where(x => enabled.Contains(x.Key))) {
             var visible = items.Where(x => preferences.Visible(x.Id)).ToArray(); if (visible.Length == 0) continue;
             shortcuts.Children.Add(new TextBlock { Text = titles.GetValueOrDefault(id,id), FontSize = 18, Margin = new Thickness(0, 4, 0, 4) });
-            foreach (var feature in visible) { var w = new DashboardWidget(feature); w.Refresh(connection.IsConnected); widgets.Add(w); shortcuts.Children.Add(w); }
+            foreach (var feature in visible) {
+                if(feature.CreateView!=null){shortcuts.Children.Add(feature.CreateView());continue;}
+                var w = new DashboardWidget(feature); w.Refresh(connection.IsConnected); widgets.Add(w); shortcuts.Children.Add(w);
+            }
         }
-        if (widgets.Count == 0) shortcuts.Children.Add(new TextBlock { Text = "暂无快捷功能", Opacity = .65 });
+        if (shortcuts.Children.Count == 0) shortcuts.Children.Add(new TextBlock { Text = "暂无快捷功能", Opacity = .65 });
     }
 }
 

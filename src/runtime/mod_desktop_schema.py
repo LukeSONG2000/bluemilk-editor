@@ -15,14 +15,32 @@ def validate(schema):
         raise ValueError('Invalid desktop component schema')
     seen=set()
     for feature in schema['features']:
-        if (type(feature) is not dict or set(feature)-{'id','title','kind','binding','command','columns','home'}
+        if (type(feature) is not dict or set(feature)-{'id','title','description','kind','binding','command','columns','home','options','floating'}
                 or not key(feature.get('id')) or feature['id'] in seen
-                or not text(feature.get('title')) or feature.get('kind') not in ('toggle','button','table','text')
+                or not text(feature.get('title')) or feature.get('kind') not in ('toggle','button','table','text','select')
                 or not key(feature.get('binding')) or type(feature.get('home',True)) is not bool):
             raise ValueError('Invalid desktop feature')
         seen.add(feature['id'])
-        if feature['kind'] in ('toggle','button') and not key(feature.get('command')):
+        if 'description' in feature and not text(feature['description'],512):
+            raise ValueError('Invalid desktop feature description')
+        if feature['kind'] in ('toggle','button','select') and not key(feature.get('command')):
             raise ValueError('Interactive desktop feature requires command')
+        if feature['kind']=='select':
+            options=feature.get('options')
+            if (type(options) is not list or not 1 <= len(options) <= 16
+                    or any(type(o) is not dict or set(o)!={'value','label'} or not key(o['value']) or not text(o['label']) for o in options)
+                    or len({o['value'] for o in options})!=len(options)):
+                raise ValueError('Invalid desktop selection options')
+        if 'floating' in feature:
+            theme=feature['floating']
+            if (feature['kind']!='table' or type(theme) is not dict
+                    or not {'background','foreground','border','fontFamily','fontSize'} <= set(theme)
+                    or set(theme)-{'background','foreground','border','fontFamily','fontSize','fontAsset'}
+                    or any(type(theme[c]) is not str or not re.fullmatch(r'#[0-9A-Fa-f]{8}',theme[c]) for c in ('background','foreground','border'))
+                    or not text(theme['fontFamily'],128) or type(theme['fontSize']) is not int or not 12<=theme['fontSize']<=24):
+                raise ValueError('Invalid floating component theme')
+            if 'fontAsset' in theme and (type(theme['fontAsset']) is not str or not re.fullmatch(r'[A-Za-z0-9_ -]{1,96}',theme['fontAsset'])):
+                raise ValueError('Invalid original font family')
         if feature['kind']=='table':
             columns=feature.get('columns')
             if type(columns) is not list or not 1 <= len(columns) <= 8:

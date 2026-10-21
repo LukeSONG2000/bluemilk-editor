@@ -56,12 +56,32 @@ The manifest may declare:
 }
 ```
 
-The generic renderer supports toggle, button, text and table. A table view model
+The generic renderer supports toggle, select, button, text and table. A table view model
 contains optional `title`, `summary` strings, and `rows` objects keyed by columns.
 Each view-model property is selected by its feature's top-level `binding`.
 Toggle commands receive `{value:boolean}`. Button commands receive `{}`.
 Queries receive `{features:[featureIds]}` so hidden tables need not read game data.
-The homepage requests only visible toggles; tables use a button opening the Mod page.
+The homepage creates the same feature cards and tables as the Mod page, backed by
+one query model. Only visible homepage features, the current Mod page and open
+floating views request data. An optional `description` forms the second header line.
+
+`select` declares at most 16 unique `options:[{value,label}]`; its command receives
+`{value:string}`. A table cell can be a string or `{runs:[{text,tone}]}` (at most
+8 runs). `tone` accepts `positive`/`negative`; other text uses the normal color.
+
+A table can opt into a native always-on-top window with `floating`:
+`{background:"#ED192940",foreground:"#FFFFFFFF",border:"#FF52CCF6",
+fontFamily:"Arial",fontSize:16}`. Colors are ARGB; size is 12–24. Closing or
+disabling the Mod closes its window. No overlay is opened automatically.
+
+An optional `floating.fontAsset` requests an exact SFNT family from the installed
+game's `resources.assets`. `mods-font` accepts `{id,sha256,family}` only for a
+verified installed package declaring that family. The host derives the resource
+path from the detected game, scans bounded SFNT tables and names, and returns a
+hash-checked user-cache record. The desktop temporarily registers that local font
+for the current Windows user and removes its own registration on normal exit.
+Game font bytes are never bundled or downloaded. This is a local resource adapter,
+not an arbitrary file read endpoint or a font distribution permission.
 
 The schema is bounded: 32 features, 8 columns, query interval 1–60 seconds. It
 contains data, not XAML/HTML or executable binding expressions. Packages own titles,
