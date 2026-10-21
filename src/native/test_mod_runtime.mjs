@@ -75,6 +75,9 @@ assert.equal(official.entryRuns,undefined);
 assert.equal(packages.registerPackage(packageManifest,entry,'a'.repeat(64)).packageSha256,'a'.repeat(64));
 assert.throws(()=>packages.registerPackage(packageManifest,entry,'b'.repeat(64)),/already owns/);
 assert.throws(()=>packages.registerPackage(manifest('syntax'),'{ invalid','c'.repeat(64)),/Unexpected/);
+assert.throws(()=>packages.registerPackage(manifest('submodule-syntax'),
+ '// BlueMilkModules:'+JSON.stringify({'child.js':'module.exports = {'})+'\nmodule.exports=()=>({});','c'.repeat(64)),/Unexpected/);
+assert.equal((await packages.command('list')).mods.some(x=>x.manifest.id==='bluemilk.submodule-syntax'),false);
 assert.equal((await packages.command('list')).mods.some(x=>x.manifest.id==='bluemilk.syntax'),false);
 await packages.command('enable',{id:'org.example.packaged'});
 await packages.command('enable',{id:'org.example.packaged'});

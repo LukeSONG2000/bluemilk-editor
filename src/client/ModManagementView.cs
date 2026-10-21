@@ -156,7 +156,6 @@ internal sealed class ModManagementView : StackPanel
         var manifest = inspected.GetProperty("manifest");
         var id = manifest.GetProperty("id").GetString()!;
         var version = manifest.GetProperty("version").GetString()!;
-        if (id is not ("bluemilk.pro" or "bluemilk.ultra")) throw new InvalidOperationException("当前开发版仅展示 BlueMilk Pro 和 BlueMilk Ultra，请使用对应的包。其他包仍可通过 CLI 管理。");
         if (expectedId != null && id != expectedId) throw new InvalidOperationException("更新包不属于所选 Mod。");
         if (previousVersion != null && CompareVersion(version, previousVersion) <= 0) throw new InvalidOperationException("请选择版本号更高的更新包。");
         var sha256 = inspected.GetProperty("sha256").GetString();
@@ -164,7 +163,7 @@ internal sealed class ModManagementView : StackPanel
         await PopulateAsync(service);
         list.SelectedItem = list.Items.Cast<ListViewItem>().First(x => ((Row)x.Tag).Hash == sha256);
         status.Title = expectedId == null ? "已添加" : "新版已安装";
-        status.Message = expectedId == null ? "尚未启用。选中后点击启用即可使用。" : "旧版本及配置保留。请断开后在启动设置中选择新版，再重新连接。";
+        status.Message = expectedId == null ? "尚未启用。选中后点击启用即可使用。" : "旧版本及配置保留。开启新版会先清理旧版，再加载新版。";
         status.Severity = InfoBarSeverity.Success;
         return true;
     });
@@ -297,7 +296,7 @@ internal sealed class ModManagementView : StackPanel
                 runtimeMods[mod.GetProperty("manifest").GetProperty("id").GetString()!] = mod.Clone();
         }
         list.Items.Clear();
-        foreach (var id in new[] { "bluemilk.pro", "bluemilk.ultra" }) {
+        foreach (var id in installedPackages.EnumerateArray().Select(p => p.GetProperty("manifest").GetProperty("id").GetString()!).Distinct().OrderBy(id => id)) {
             var versions = packages.GetProperty("packages").EnumerateArray()
                 .Where(x => x.GetProperty("manifest").GetProperty("id").GetString() == id)
                 .OrderByDescending(x => x.GetProperty("manifest").GetProperty("version").GetString(), Comparer<string?>.Create((a,b) => CompareVersion(a!,b!))).ToArray();

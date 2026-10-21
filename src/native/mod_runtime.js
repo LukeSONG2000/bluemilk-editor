@@ -13,7 +13,7 @@ globalThis.BlueMilkMods=(()=>{
   if(!validVersion(manifest.version))throw Error('Invalid Mod version; require major.minor.patch');
   for(const key of ['name','publisher'])
    if(typeof manifest[key]!=='string'||!manifest[key].trim()||manifest[key].length>256)throw Error('Invalid Mod '+key);
-  if(manifest.sdkVersion!==1||manifest.gameProfile!=='swgoh-0.40.7')throw Error('Unsupported Mod SDK or game profile');
+  if(![1,2].includes(manifest.sdkVersion)||manifest.gameProfile!=='swgoh-0.40.7')throw Error('Unsupported Mod SDK or game profile');
   for(const key of ['capabilities','presentations','conflicts','dependencies'])
    if(!Array.isArray(manifest[key])||manifest[key].some(x=>typeof x!=='string')||new Set(manifest[key]).size!==manifest[key].length)throw Error('Invalid Mod '+key);
   if(!manifest.presentations.length||manifest.presentations.some(x=>!['desktop','cli'].includes(x)))throw Error('Invalid presentation support');
@@ -39,7 +39,15 @@ globalThis.BlueMilkMods=(()=>{
  }
  function registerPackage(manifest,source,sha256,configuration={}){
   if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
+  if(manifest?.sdkVersion===1&&manifest.capabilities?.includes('battle.information.ui'))throw Error('This Mod requires the removed built-in information UI. Install its SDK 2 update.');
   if(typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)||typeof source!=='string')throw Error('Invalid package registration');
+  if(source.startsWith('// BlueMilkModules:')){
+   const files=JSON.parse(source.slice('// BlueMilkModules:'.length,source.indexOf('\n')));
+   for(const [name,code] of Object.entries(files)){
+    if(name.endsWith('.js'))new Function('module','exports','require','"use strict";\n'+code);
+    else if(name.endsWith('.json'))JSON.parse(code);
+   }
+  }
   const existing=records.get(manifest?.id);
   if(existing){
    if(existing.packageSha256===sha256)return view(existing);
@@ -129,10 +137,10 @@ globalThis.BlueMilkMods=(()=>{
     return pending;
    }
    const sdk=Object.freeze({
-    version:1,
+    version:manifest.sdkVersion,
     mod:Object.freeze({id:manifest.id,version:manifest.version}),
     config:Object.freeze({read:()=>JSON.parse(configurationJson)}),
-    game:Object.freeze({operations:Object.freeze({install(){
+    game:Object.freeze({unitName:id=>globalThis.BlueMilkNames?.[id]??id,operations:Object.freeze({install(){
      if(!creating)throw Error('Acquire game operations during the Mod factory call');
      if(!manifest.capabilities.includes('game.operations'))throw Error('Missing capability: game.operations');
      return acquire('game-operations',()=>{
@@ -150,7 +158,21 @@ globalThis.BlueMilkMods=(()=>{
       };
      });
     }})}),
-    lifecycle:Object.freeze({compose(options={}){
+    native:Object.freeze({
+     get runtime(){if(!manifest.capabilities.includes('native.ui'))throw Error('Missing capability: native.ui');return RuntimeApi;},
+     get scene(){if(!manifest.capabilities.includes('native.ui'))throw Error('Missing capability: native.ui');return SceneApi;},
+     readStatus:unit=>{if(!manifest.capabilities.includes('battle.information.read'))throw Error('Missing capability: battle.information.read');return readBattleStatus(unit);},
+     on(name,callback){
+      if(!manifest.capabilities.includes('native.ui'))throw Error('Missing capability: native.ui');
+      if(!creating)throw Error('Acquire native signals during the factory');
+      const off=NativeSignals.on(name,callback);let lifecycle='enabled';
+      acquire('signal:'+resources.length,()=>({ready:Promise.resolve(),status:()=>({lifecycle}),stop(){off();lifecycle='stopped';return {lifecycle};}}));
+     }
+    }),
+    lifecycle:Object.freeze({own(handle){
+     if(!creating||!handle?.ready||typeof handle.status!=='function'||typeof handle.stop!=='function')throw Error('Own a valid resource during the factory');
+     return acquire('resource:'+resources.length,()=>handle);
+    },compose(options={}){
      if(!creating||sealed)throw Error('Compose once during the Mod factory call');
      if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>k!=='command')||
         (options.command!==undefined&&typeof options.command!=='function'))throw Error('Invalid lifecycle compose options');
@@ -192,8 +214,7 @@ globalThis.BlueMilkMods=(()=>{
      install(){
       if(!creating)throw Error('Acquire information UI during the Mod factory call');
       if(!manifest.capabilities.includes('battle.information.ui'))throw Error('Missing capability: battle.information.ui');
-      if(typeof installBattleInfo!=='function')throw Error('Information UI provider unavailable');
-      return acquire('information',()=>installBattleInfo());
+      throw Error('The built-in information UI was removed. Update this Mod to SDK 2.');
      }
     })})
    });

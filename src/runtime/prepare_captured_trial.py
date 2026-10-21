@@ -95,7 +95,7 @@ def prepare(battle, inventory, dump, prefix, squad_type, mode, duration, auto, t
                'original_fixture.js', 'battle_proto.js', 'isolated_inventory.js',
                'captured_battle.js', 'definition_scope.js', 'selected_squad.js', 'captured_trial.js']
     if mode == 'visual':
-        modules += ['battle_instance_identity.js', 'battle_status_reader.js', 'battle_info_ui.js', 'battle_attributes_reader.js',
+        modules += ['battle_instance_identity.js', 'native_signals.js', 'battle_status_reader.js', 'battle_attributes_reader.js',
                     'battle_input.js', 'runtime_observer.js', 'trial_input.js', 'frame_profile.js', 'graphics_profile.js', 'loading_profile.js', 'ai_trace_mod.js']
     if trace_ai or mode == 'visual':
         modules += ['original_ai_trace.js']

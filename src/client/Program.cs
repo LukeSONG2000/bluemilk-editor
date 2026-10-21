@@ -54,575 +54,96 @@ public sealed partial class ShellApplication : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        window = new Window { Title = "BlueMilk Editor" };
-        window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "account-portrait.ico"));
-        var content = new ConnectionView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
-        var preferences = new DashboardPreferences();
-        var dashboard = new DashboardView(content, preferences);
-        var overviewView = new ScrollViewer { Content = dashboard };
-        var navigation = new NavigationView { AlwaysShowHeader = false, IsTitleBarAutoPaddingEnabled = false, IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
-            IsSettingsVisible = false, PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
-            IsPaneOpen = true, IsPaneToggleButtonVisible = false, OpenPaneLength = 230, Content = overviewView };
-        var overview = new NavigationViewItem { Content = "主页", Icon = new SymbolIcon(Symbol.Home) };
-        navigation.MenuItems.Add(overview);
-        navigation.SelectedItem = overview;
-        var modsItem = new NavigationViewItem { Content = "Mod 管理", Icon = new SymbolIcon(Symbol.Library) };
-        navigation.MenuItems.Add(modsItem);
-        var mods = new ModManagementView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
-        var modsView = new ScrollViewer { Content = mods };
-        modsView.SizeChanged += (_, args) => mods.Width = Math.Max(0, args.NewSize.Width);
-        var battleItem = new NavigationViewItem { Content = "战斗助手" };
-        navigation.MenuItems.Add(new NavigationViewItemSeparator());
-        var packagePages = new Dictionary<string, FrameworkElement>();
-        var battle = new BattleInformationView(content, () =>
-            (ReferenceEquals(navigation.SelectedItem, battleItem) || (navigation.SelectedItem as NavigationViewItem)?.Tag as string == "bluemilk.pro") && window.AppWindow.IsVisible &&
-            !(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
-              presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized), includeController: false, title: "BlueMilk Pro");
-        var battleView = new ScrollViewer();
-        var trialItem = new NavigationViewItem { Content = "试玩" };
-
-        var trial = new TrialCaptureView(content, () => WinRT.Interop.WindowNative.GetWindowHandle(window));
-        var trialView = new ScrollViewer { Content = trial };
-        var proItem = new NavigationViewItem { Content = "BlueMilk Pro", Tag = "bluemilk.pro", Icon = new SymbolIcon(Symbol.Document) };
-        var ultraItem = new NavigationViewItem { Content = "BlueMilk Ultra", Tag = "bluemilk.ultra", Icon = new SymbolIcon(Symbol.Document) };
-        void UpdateRunningMods(JsonElement running) {
-            var enabled = running.EnumerateArray().Where(m => m.GetProperty("state").GetString() == "enabled")
-                .Select(m => m.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
-            foreach (var item in new[] { proItem, ultraItem }) {
-                if (enabled.Contains((string)item.Tag)) {
-                    if (!navigation.MenuItems.Contains(item)) navigation.MenuItems.Add(item);
-                } else {
-                    if (ReferenceEquals(navigation.SelectedItem, item)) navigation.SelectedItem = modsItem;
-                    navigation.MenuItems.Remove(item);
-                }
+        window=new Window {Title="BlueMilk Editor"};
+        window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","account-portrait.ico"));
+        var connection=new ConnectionView(()=>WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var preferences=new DashboardPreferences();
+        var dashboard=new DashboardView(connection,preferences);
+        var homeView=new ScrollViewer {Content=dashboard};
+        var navigation=new NavigationView {AlwaysShowHeader=false,IsTitleBarAutoPaddingEnabled=false,
+            IsBackButtonVisible=NavigationViewBackButtonVisible.Collapsed,IsSettingsVisible=false,
+            PaneDisplayMode=NavigationViewPaneDisplayMode.Left,IsPaneOpen=true,IsPaneToggleButtonVisible=false,OpenPaneLength=230,Content=homeView};
+        var home=new NavigationViewItem {Content="主页",Icon=new SymbolIcon(Symbol.Home)};
+        var management=new NavigationViewItem {Content="Mod 管理",Icon=new SymbolIcon(Symbol.Library)};
+        navigation.MenuItems.Add(home);navigation.MenuItems.Add(management);navigation.MenuItems.Add(new NavigationViewItemSeparator());
+        var mods=new ModManagementView(()=>WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var modsView=new ScrollViewer {Content=mods};modsView.SizeChanged+=(_,change)=>mods.Width=Math.Max(0,change.NewSize.Width);
+        var pages=new Dictionary<string,(string Hash,NavigationViewItem Item,ModPageView Components,ModDetailView Detail,ScrollViewer View)>();
+        var enabled=new HashSet<string>();
+        void ShowEnabled() {
+            foreach(var (id,page) in pages) {
+                if(enabled.Contains(id)) {if(!navigation.MenuItems.Contains(page.Item))navigation.MenuItems.Add(page.Item);}
+                else {if(ReferenceEquals(navigation.SelectedItem,page.Item))navigation.SelectedItem=management;navigation.MenuItems.Remove(page.Item);}
             }
         }
-        content.RuntimeModsChanged += mods.SyncRuntime;
-        content.ModProfileChanged += mods.SyncProfile;
-        mods.EnabledModsChanged += dashboard.Running;
-        mods.EnabledModsChanged += UpdateRunningMods;
-        content.StateChanged += () => {
-            mods.SyncConnection(content.IsConnected);
-        };
-        var proFeatures = new[] {
-            new DashboardFeature("bluemilk.pro.information", "游戏内信息拓展", WidgetKind.Toggle,
-                () => content.InformationEnabled, value => content.SetInformationAsync((bool)value!)),
-            new DashboardFeature("bluemilk.pro.attributes", "实时属性", WidgetKind.Button,
-                () => null, _ => { navigation.SelectedItem = proItem; return Task.CompletedTask; })
-        };
-        dashboard.Register("bluemilk.pro", proFeatures);
-        var proPage = new ModDetailView("BlueMilk Pro", battle, proFeatures, preferences);
-        battleView.Content = proPage;
-        packagePages["bluemilk.pro"] = battleView;
-        var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24,8,24,24) };
-
-        var ultraStatus = new InfoBar { IsOpen = true, IsClosable = false, Title = "开发中 · 未安装", Message = "现有玩法扩展正在迁入 Ultra，尚未发布可安装包。" };
-        ultraPage.Children.Add(ultraStatus);
-        foreach (var feature in new[] {
-            ("敌方控制", "仅普攻、一键嘲讽、指定攻击目标与敌方手动操作。"),
-            ("提前试玩", "在隔离环境体验战斗，不消耗正式资源。"),
-            ("自定义战斗", "自定义双方阵容与战斗配置。") }) {
-            ultraPage.Children.Add(new Expander { Header = feature.Item1, HorizontalAlignment = HorizontalAlignment.Stretch,
-                Content = new TextBlock { Text = feature.Item2 + "\n待迁入 Ultra 包，当前不可用。", TextWrapping = TextWrapping.Wrap } });
-        }
-        var ultraDetail = new ModDetailView("BlueMilk Ultra", ultraPage, Array.Empty<DashboardFeature>(), preferences);
-        packagePages["bluemilk.ultra"] = new ScrollViewer { Content = ultraDetail };
-        mods.PackagesChanged += packages => {
-            foreach (var item in new[] { proItem, ultraItem }) {
-                var package = packages.EnumerateArray().LastOrDefault(p => p.GetProperty("manifest").GetProperty("id").GetString() == (string)item.Tag);
-                item.Icon = package.ValueKind == JsonValueKind.Undefined ? new SymbolIcon(Symbol.Document) : ModIcon.Create(package);
+        mods.PackagesChanged+=packages=>{
+            var installed=packages.EnumerateArray().GroupBy(p=>p.GetProperty("manifest").GetProperty("id").GetString()!)
+                .ToDictionary(g=>g.Key,g=>g.OrderByDescending(p=>Version.Parse(p.GetProperty("manifest").GetProperty("version").GetString()!)).First().Clone());
+            foreach(var id in pages.Keys.Where(id=>!installed.ContainsKey(id)).ToArray()) {
+                var page=pages[id];page.Components.Dispose();navigation.MenuItems.Remove(page.Item);
+                if(ReferenceEquals(navigation.SelectedItem,page.Item))navigation.SelectedItem=management;
+                pages.Remove(id);dashboard.Remove(id);
             }
-            foreach (var id in new[] { "bluemilk.pro", "bluemilk.ultra" }) {
-                var current = packages.EnumerateArray().Where(p => p.GetProperty("manifest").GetProperty("id").GetString() == id)
-                    .OrderByDescending(p => Version.Parse(p.GetProperty("manifest").GetProperty("version").GetString()!)).FirstOrDefault();
-                if (current.ValueKind != JsonValueKind.Undefined) (id == "bluemilk.pro" ? proPage : ultraDetail).Package(current);
+            foreach(var (id,package) in installed) {
+                var hash=package.GetProperty("sha256").GetString()!;
+                if(pages.TryGetValue(id,out var previous)&&previous.Hash==hash)continue;
+                var selected=previous.Item!=null&&ReferenceEquals(navigation.SelectedItem,previous.Item);
+                if(previous.Item!=null){previous.Components.Dispose();navigation.MenuItems.Remove(previous.Item);}
+                var manifest=package.GetProperty("manifest");var title=manifest.GetProperty("name").GetString()!;
+                var item=new NavigationViewItem {Content=title,Tag=id,Icon=ModIcon.Create(package)};
+                var components=new ModPageView(connection,manifest,hash,
+                    ()=>ReferenceEquals(navigation.SelectedItem,item)&&window.AppWindow.IsVisible&&!(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter op&&op.State==Microsoft.UI.Windowing.OverlappedPresenterState.Minimized),
+                    ()=>ReferenceEquals(navigation.SelectedItem,home),()=>navigation.SelectedItem=item,preferences);
+                var detail=new ModDetailView(title,components,components.Features,preferences);detail.Package(package);
+                pages[id]=(hash,item,components,detail,new ScrollViewer {Content=detail});
+                dashboard.Register(id,title,components.Features);
+                if(selected)navigation.SelectedItem=item;
             }
-            var ids = packages.EnumerateArray().Select(x => x.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
-            ToolTipService.SetToolTip(proItem, ids.Contains("bluemilk.pro") ? "已安装" : "未安装");
-            ToolTipService.SetToolTip(ultraItem, ids.Contains("bluemilk.ultra") ? "已安装" : "未安装");
-            ultraStatus.Title = ids.Contains("bluemilk.ultra") ? "开发中 · 包已安装" : "开发中 · 未安装";
+            ShowEnabled();
         };
-        var cliSmoke = Environment.GetCommandLineArgs().Contains("--smoke-cli");
-        var testRoot = cliSmoke ? Environment.GetEnvironmentVariable("SWGOH_CLI_INSTALL_TEST_ROOT") : null;
-        var settings = new NavigationViewItem { Content = "设置", Icon = new SymbolIcon(Symbol.Setting) };
-        navigation.FooterMenuItems.Add(settings);
-        var cliSettings = new CliSettingsView(testRoot);
-        var updates = new UpdateSettingsView();
-        var settingsContent = new StackPanel { Spacing = 16, Padding = new Thickness(24,8,24,24) };
-        updates.Padding = cliSettings.Padding = new Thickness(0);
-        updates.MaxWidth = cliSettings.MaxWidth = double.PositiveInfinity;
-        updates.HorizontalAlignment = cliSettings.HorizontalAlignment = HorizontalAlignment.Stretch;
-        settingsContent.Children.Add(FluentSurface.Card(updates));
-        settingsContent.Children.Add(FluentSurface.Card(cliSettings));
-        var settingsView = new ScrollViewer { Content = settingsContent };
-        navigation.SelectionChanged += (_, change) =>
-        {
-            navigation.Content = ReferenceEquals(change.SelectedItem, settings) ? settingsView
-                : ReferenceEquals(change.SelectedItem, trialItem) ? trialView
-                : ReferenceEquals(change.SelectedItem, modsItem) ? modsView
-                : ReferenceEquals(change.SelectedItem, battleItem) ? battleView
-                : (change.SelectedItem as NavigationViewItem)?.Tag is string id && packagePages.TryGetValue(id, out var page) ? page : overviewView;
+        mods.EnabledModsChanged+=state=>{enabled=state.EnumerateArray().Select(m=>m.GetProperty("manifest").GetProperty("id").GetString()!).ToHashSet();ShowEnabled();dashboard.Running(state);};
+        connection.RuntimeModsChanged+=mods.SyncRuntime;connection.ModProfileChanged+=mods.SyncProfile;
+        connection.StateChanged+=()=>mods.SyncConnection(connection.IsConnected);
+        var settings=new NavigationViewItem {Content="设置",Icon=new SymbolIcon(Symbol.Setting)};navigation.FooterMenuItems.Add(settings);
+        var cli=new CliSettingsView();var updates=new UpdateSettingsView();
+        var settingsContent=new StackPanel {Spacing=16,Padding=new Thickness(24,8,24,24)};
+        updates.Padding=cli.Padding=new Thickness(0);updates.MaxWidth=cli.MaxWidth=double.PositiveInfinity;
+        updates.HorizontalAlignment=cli.HorizontalAlignment=HorizontalAlignment.Stretch;
+        settingsContent.Children.Add(FluentSurface.Card(updates));settingsContent.Children.Add(FluentSurface.Card(cli));
+        var settingsView=new ScrollViewer {Content=settingsContent};
+        navigation.SelectionChanged+=(_,change)=>navigation.Content=ReferenceEquals(change.SelectedItem,home)?homeView:
+            ReferenceEquals(change.SelectedItem,management)?modsView:ReferenceEquals(change.SelectedItem,settings)?settingsView:
+            change.SelectedItem is NavigationViewItem item&&item.Tag is string id&&pages.TryGetValue(id,out var page)?page.View:homeView;
+        navigation.SelectedItem=home;
+        window.ExtendsContentIntoTitleBar=true;window.SystemBackdrop=new Microsoft.UI.Xaml.Media.MicaBackdrop();
+        var shell=new Grid();shell.RowDefinitions.Add(new() {Height=new GridLength(48)});shell.RowDefinitions.Add(new() {Height=new GridLength(1,GridUnitType.Star)});
+        var titlebar=new Grid {Height=48,Background=new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent)};
+        titlebar.Children.Add(new Image {Width=20,Height=20,Source=new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory,"Assets","titlebar-icon.png"))),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(16,0,0,0)});
+        titlebar.Children.Add(new TextBlock {Text="BlueMilk Editor",FontSize=14,Margin=new Thickness(48,0,160,0),VerticalAlignment=VerticalAlignment.Center});
+        shell.Children.Add(titlebar);Grid.SetRow(navigation,1);shell.Children.Add(navigation);
+        navigation.Resources["NavigationViewContentBackground"]=new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        navigation.Resources["NavigationViewContentGridBorderBrush"]=new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        window.Content=shell;window.SetTitleBar(titlebar);window.AppWindow.TitleBar.ButtonBackgroundColor=Microsoft.UI.Colors.Transparent;window.AppWindow.TitleBar.ButtonInactiveBackgroundColor=Microsoft.UI.Colors.Transparent;
+        window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1060,720));
+        var allowingClose=false;
+        window.AppWindow.Closing+=async(_,closing)=>{
+            connection.StopAutomaticConnection();if(allowingClose||!connection.HasWorker)return;
+            closing.Cancel=true;
+            try {await connection.CloseWindowConnectionAsync();allowingClose=true;window.Close();}catch { }
         };
-        window.ExtendsContentIntoTitleBar = true;
-        window.SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
-        var shell = new Grid();
-        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
-        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        var titlebar = new Grid { Height = 48, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
-        titlebar.Children.Add(new Image { Width = 20, Height = 20,
-            Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "titlebar-icon.png"))),
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16,0,0,0) });
-        titlebar.Children.Add(new TextBlock { Text = "BlueMilk Editor", FontSize = 14, Margin = new Thickness(48,0,160,0), VerticalAlignment = VerticalAlignment.Center });
-        shell.Children.Add(titlebar); Grid.SetRow(navigation, 1); shell.Children.Add(navigation);
-        navigation.Resources["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        navigation.Resources["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        window.Content = shell; window.SetTitleBar(titlebar);
-        window.AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        window.AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-        window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1060, 720));
-        bool allowingClose = false;
-        window.AppWindow.Closing += async (_, closing) =>
-        {
-            content.StopAutomaticConnection();
-            if (allowingClose || !content.HasWorker) return;
-            closing.Cancel = true;
-            try
-            {
-                var sharedConnection = content.IsSharedConnection;
-                await content.CloseWindowConnectionAsync();
-                var smokeOutput = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-                if (!string.IsNullOrEmpty(smokeOutput))
-                    await File.WriteAllTextAsync(smokeOutput + ".window-close",
-                        JsonSerializer.Serialize(new { disconnected = !sharedConnection, connectionClosed = true, sharedRuntimeRetained = sharedConnection }));
-                allowingClose = true; window.Close();
-            }
-            catch { /* Keep the window and runtime ownership available for recovery. */ }
-        };
-        Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
-        var importGate = new SemaphoreSlim(1,1);
+        var importGate=new SemaphoreSlim(1,1);
         async Task OpenPackagesAsync(string[] arguments) {
             await importGate.WaitAsync();
             try {
-                if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();
-                window.Activate();
-                var paths = PackageOpenArguments.Parse(arguments);
-                if (paths.Length == 0) return;
-                navigation.SelectedItem = modsItem;
-                foreach (var path in paths) await mods.InstallFromActivationAsync(path);
-            } catch (Exception error) { mods.ImportFailure(error); }
-            finally { importGate.Release(); }
+                if(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)presenter.Restore();
+                window.Activate();var paths=PackageOpenArguments.Parse(arguments);if(paths.Length==0)return;
+                navigation.SelectedItem=management;foreach(var path in paths)await mods.InstallFromActivationAsync(path);
+            }catch(Exception error){mods.ImportFailure(error);}finally{importGate.Release();}
         }
-        PackageActivation.Ready(arguments => window.DispatcherQueue.TryEnqueue(() => _ = OpenPackagesAsync(arguments)));
-        if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke"))) content.StartAutomaticConnection();
-        if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke-")))
-            _ = RefreshPackagesAsync();
-        async Task RefreshPackagesAsync() { try { await mods.RefreshAsync(); } catch { } }
-
-        if (Environment.GetCommandLineArgs().Contains("--smoke-mod-library")) {
-            navigation.SelectedItem = modsItem;
-            _ = SmokeModLibraryAsync(mods);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-profile")) {
-            navigation.SelectedItem = modsItem;
-            _ = SmokeProfileAsync(mods);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-config")) {
-            navigation.SelectedItem = modsItem;
-            _ = SmokeConfigAsync(mods);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-mods"))
-        {
-            navigation.SelectedItem = modsItem;
-            _ = SmokeModsAsync(content, mods);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-shared"))
-            _ = SmokeSharedAsync(content);
-        if (Environment.GetCommandLineArgs().Contains("--smoke-update"))
-        {
-            navigation.SelectedItem = settings;
-            _ = SmokeUpdateAsync(updates);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke")) _ = SmokeAsync(DetectAsync);
-        if (Environment.GetCommandLineArgs().Contains("--smoke-connect")) _ = SmokeConnectionAsync(content);
-        if (Environment.GetCommandLineArgs().Contains("--smoke-controller"))
-        {
-            navigation.SelectedItem = battleItem;
-            battle.Sections.SelectedIndex = 1;
-            _ = SmokeControllerAsync(content, battle.Controller);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-capture"))
-        {
-            navigation.SelectedItem = trialItem;
-            _ = SmokeCaptureAsync(content, trial);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-prepare"))
-        {
-            navigation.SelectedItem = trialItem;
-            trial.PreparationPanel.IsExpanded = true;
-            _ = SmokePreparationAsync(content, trial);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-trial") || Environment.GetCommandLineArgs().Contains("--smoke-trial-close"))
-        {
-            navigation.SelectedItem = trialItem;
-            _ = SmokeTrialAsync(content, trial, Environment.GetCommandLineArgs().Contains("--smoke-trial-close"));
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-information"))
-        {
-            content.InformationEnabled = true;
-            _ = SmokeConnectionAsync(content);
-        }
-        if (Environment.GetCommandLineArgs().Contains("--smoke-attributes"))
-        {
-            navigation.SelectedItem = battleItem;
-            _ = SmokeAttributesAsync(content, battle, () => navigation.SelectedItem = overview);
-        }
-        if (cliSmoke)
-        {
-            navigation.SelectedItem = settings;
-            navigation.SelectedItem = overview;
-            navigation.SelectedItem = settings;
-            _ = SmokeCliAsync(cliSettings, testRoot);
-        }
-    }
-
-    private async Task SmokeModLibraryAsync(ModManagementView mods)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try {
-            var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE") ?? throw new IOException("Package required");
-            await mods.AddPackageAsync(package);
-            try { await mods.AddPackageAsync(package, "org.example.wrong", "0.0.1"); throw new IOException("Wrong ID accepted"); }
-            catch (InvalidOperationException e) when (e.Message.Contains("不属于")) { }
-            try { await mods.AddPackageAsync(package, "bluemilk.pro", "0.1.0"); throw new IOException("Same version accepted"); }
-            catch (InvalidOperationException e) when (e.Message.Contains("更高")) { }
-            var update = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_UPDATE_PACKAGE") ?? throw new IOException("Update fixture required");
-            await mods.AddPackageAsync(update, "bluemilk.pro", "0.1.0");
-            if (output != null) await File.WriteAllTextAsync(output + ".ready", "{}");
-            await Task.Delay(20000);
-            await mods.ChangeAsync("mods-package-uninstall");
-            if (output != null) await File.WriteAllTextAsync(output, "{\"library\":true,\"updateValidation\":true,\"deleted\":true}");
-        } catch (Exception e) {
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        } finally { window?.Close(); }
-    }
-
-    private async Task SmokeProfileAsync(ModManagementView mods)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try {
-            await mods.InspectAsync(Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
-                ?? throw new InvalidOperationException("Explicit example required."));
-            await mods.InstallAsync();
-            mods.SelectMod("org.example.configuration");
-            await mods.StartupAsync();
-            if (output != null) await File.WriteAllTextAsync(output + ".profile-reopened", "{}");
-            await mods.StartupAsync();
-            if (output != null) await File.WriteAllTextAsync(output, "{\"startupDialog\":true}");
-        } catch (Exception e) {
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        } finally { window?.Close(); }
-    }
-
-    private async Task SmokeConfigAsync(ModManagementView mods)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try {
-            await mods.InspectAsync(Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
-                ?? throw new InvalidOperationException("Explicit configuration example required."));
-            await mods.InstallAsync();
-            mods.SelectMod("org.example.configuration");
-            await mods.ConfigureAsync();
-            if (output != null) await File.WriteAllTextAsync(output + ".config-reopened", "{}");
-            await mods.ConfigureAsync();
-            if (output != null) await File.WriteAllTextAsync(output, "{\"configurationDialog\":true}");
-        } catch (Exception e) {
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        } finally { window?.Close(); }
-    }
-
-    private async Task SmokeModsAsync(ConnectionView connection, ModManagementView mods)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        var modId = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_MOD_ID") ?? "bluemilk.information";
-        try {
-            var package = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_PACKAGE")
-                ?? throw new InvalidOperationException("Explicit Mod package required.");
-            await mods.AddPackageAsync(package);
-            connection.InformationEnabled = false;
-            var state = await connection.ConnectAsync();
-            if (state.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
-                throw new InvalidOperationException("Home screen required for lifecycle smoke.");
-            await mods.RefreshAsync();
-            mods.SelectMod(modId);
-            await mods.ChangeAsync("mods-package-register");
-            await mods.ChangeAsync("mods-enable");
-            if (output != null) await File.WriteAllTextAsync(output + ".enabled", "{\"enabled\":true}");
-            await Task.Delay(16000);
-            await mods.ChangeAsync("mods-disable");
-            if (output != null) await File.WriteAllTextAsync(output + ".disabled", "{\"disabled\":true}");
-            await Task.Delay(8000);
-            if (Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_UNINSTALL") == "1") {
-                await mods.ChangeAsync("mods-package-uninstall");
-                if (output != null) await File.WriteAllTextAsync(output + ".uninstalled", "{\"uninstalled\":true}");
-                await Task.Delay(8000);
-                await mods.AddPackageAsync(package);
-                mods.SelectMod(modId);
-                await mods.ChangeAsync("mods-package-register");
-                if (output != null) await File.WriteAllTextAsync(output + ".restored", "{\"restored\":true}");
-                await Task.Delay(8000);
-            }
-            await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, "{\"modLifecycle\":true,\"disconnected\":true}");
-        } catch (Exception e) {
-            try { await connection.DisconnectAsync(); } catch { }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        } finally { window?.Close(); }
-    }
-
-    private async Task SmokePreparationAsync(ConnectionView connection, TrialCaptureView trial)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var battle = Environment.GetEnvironmentVariable("SWGOH_SMOKE_BATTLE") ?? throw new InvalidOperationException("Explicit capture required.");
-            var inventory = Environment.GetEnvironmentVariable("SWGOH_SMOKE_INVENTORY") ?? throw new InvalidOperationException("Explicit inventory required.");
-            trial.Preparation.SelectForSmoke(battle, inventory, 8);
-            try { await trial.Preparation.PrepareAsync(); throw new IOException("Expected missing provenance rejection."); }
-            catch (RemoteCommandException e) when (e.Message.Contains("provenance missing")) { }
-            if (connection.HasWorker) throw new IOException("Preparation worker was not cleaned up.");
-            trial.PreparationPanel.StartBringIntoView();
-            await Task.Delay(16000);
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { expectedRejected = true, reason = trial.Preparation.Error, disconnected = true, gameAttached = false }));
-        }
-        catch (Exception e)
-        {
-            try { await connection.DisconnectAsync(); } catch { }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeTrialAsync(ConnectionView connection, TrialCaptureView trial, bool externalClose)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var file = Environment.GetEnvironmentVariable("SWGOH_PREPARED_MANIFEST") ?? throw new InvalidOperationException("Explicit manifest required.");
-            var started = await trial.StartTrialAsync(file);
-            if (externalClose)
-            {
-                if (output != null) await File.WriteAllTextAsync(output + ".ready", started.GetRawText());
-                // The harness sends WM_CLOSE to this window; the normal Closing
-                // handler detaches the frontend; shared trial ownership remains in app-server.
-                await Task.Delay(Timeout.Infinite);
-            }
-            await Task.Delay(16000);
-            var snapshot = await connection.RefreshAsync();
-            bool controlSmoke = Environment.GetEnvironmentVariable("BLUEMILK_SMOKE_TRIAL_CONTROL") == "1";
-            var units = snapshot.GetProperty("units");
-            if (snapshot.GetProperty("state").GetString() != "BattleGameState" ||
-                (!controlSmoke && units.GetArrayLength() != 10) ||
-                (controlSmoke && (!units.EnumerateArray().Any(u => u.GetProperty("owner").GetInt32() == 0) ||
-                                  !units.EnumerateArray().Any(u => u.GetProperty("owner").GetInt32() == 1))))
-                throw new InvalidOperationException("Expected native trial teams (ten units for the original demo fixture).");
-            bool trialControlRestored = false;
-            if (controlSmoke)
-            {
-                if (!snapshot.GetProperty("arena").GetProperty("status").GetProperty("armed").GetBoolean())
-                    throw new IOException("Prepared control owner is not armed.");
-                var restored = await connection.ControlAsync("disarm", null);
-                if (restored.GetProperty("arena").ValueKind != JsonValueKind.Null)
-                    throw new IOException("Prepared control owner was not released.");
-                trialControlRestored = true;
-            }
-            await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { started, units = units.GetArrayLength(), trialControlRestored, disconnected = !connection.HasWorker }));
-        }
-        catch (Exception e)
-        {
-            string? cleanupError = null;
-            try { await connection.DisconnectAsync(); } catch (Exception cleanup) { cleanupError = cleanup.Message; }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString(), cleanupError }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeCaptureAsync(ConnectionView connection, TrialCaptureView trial)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var connected = await connection.ConnectAsync();
-            if (connected.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
-                throw new InvalidOperationException("采集验收只在酒馆进行。");
-            var started = await trial.ExecuteAsync("capture-start");
-            if (!trial.Current!.Active || trial.Current.Saved || trial.Current.HasErrors)
-                throw new InvalidOperationException("采集监听未正确进入等待状态。");
-            await Task.Delay(16000);
-            var status = await trial.ExecuteAsync("capture-status");
-            var stopped = await trial.ExecuteAsync("capture-stop");
-            if (trial.Current!.Active || trial.Current.HasErrors) throw new InvalidOperationException("采集未确认停止。");
-            var final = await connection.RefreshAsync();
-            await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { started, status, stopped, final, disconnected = !connection.HasWorker }));
-        }
-        catch (Exception e)
-        {
-            string? cleanupError = null;
-            try { await connection.DisconnectAsync(); } catch (Exception cleanup) { cleanupError = cleanup.Message; }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString(), cleanupError }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeControllerAsync(ConnectionView connection, EnemyControlView controller)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        var checks = new List<JsonElement>();
-        try
-        {
-            var initial = await connection.ConnectAsync();
-            if (initial.GetProperty("snapshot").GetProperty("state").GetString() != "HomeBaseGameState")
-                throw new InvalidOperationException("验收只允许在酒馆运行。");
-            controller.SelectForSmoke(EnemyStrategy.OneClickTaunt, true, 0);
-            checks.Add(await controller.ExecuteAsync("arm"));
-            checks.Add(await controller.ExecuteAsync("configure"));
-            await Task.Delay(16000);
-            checks.Add(await controller.ExecuteAsync("disarm"));
-            controller.SelectForSmoke(EnemyStrategy.Manual, true, 0);
-            checks.Add(await controller.ExecuteAsync("arm"));
-            checks.Add(await controller.ExecuteAsync("disarm"));
-            controller.SelectForSmoke(EnemyStrategy.OneClickTaunt, true, 1);
-            checks.Add(await controller.ExecuteAsync("arm"));
-            checks.Add(await controller.ExecuteAsync("disarm"));
-            var final = await connection.RefreshAsync();
-            await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { checks, final, disconnected = !connection.HasWorker }));
-        }
-        catch (Exception e)
-        {
-            string? cleanupError = null;
-            try { await connection.DisconnectAsync(); } catch (Exception cleanup) { cleanupError = cleanup.Message; }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString(), checks, cleanupError }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeAttributesAsync(ConnectionView connection, BattleInformationView battle, Action hidePage)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var directory = Environment.GetEnvironmentVariable("SWGOH_TRIAL_DIRECTORY") ?? throw new InvalidOperationException("Trial directory required.");
-            var pid = int.Parse(Environment.GetEnvironmentVariable("SWGOH_TRIAL_PID") ?? "");
-            await connection.ConnectAsync(directory, pid);
-            await Task.Delay(16000);
-            var selected = battle.Current ?? throw new InvalidOperationException("No selected native attributes.");
-            var refreshCount = battle.RefreshCount;
-            hidePage();
-            await Task.Delay(1500); // Allow an already-dispatched read to drain.
-            var hiddenStart = battle.RefreshCount;
-            await Task.Delay(2500);
-            var hiddenEnd = battle.RefreshCount;
-            await connection.DisconnectAsync();
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { selected, refreshCount, hiddenStart, hiddenEnd, observerDisconnected = !connection.HasWorker }));
-        }
-        catch (Exception e)
-        {
-            string? cleanupError = null;
-            try { await connection.DisconnectAsync(); } catch (Exception cleanup) { cleanupError = cleanup.Message; }
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString(), cleanupError }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeConnectionAsync(ConnectionView view)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        string? initial = null;
-        try
-        {
-            if (string.IsNullOrEmpty(output)) throw new InvalidOperationException("Smoke output path required.");
-            var connection = await view.ConnectAsync();
-            initial = connection.GetProperty("snapshot").GetProperty("state").GetString();
-            await File.WriteAllTextAsync(output + ".ready", JsonSerializer.Serialize(new { gamePid = connection.GetProperty("pid").GetInt32(), workerPid = view.WorkerPid, initial }));
-            var until = DateTime.UtcNow.AddSeconds(35);
-            while (DateTime.UtcNow < until && !File.Exists(output + ".release")) await Task.Delay(200);
-            var snapshot = await view.RefreshAsync();
-            await view.DisconnectAsync();
-            await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { initial, final = snapshot.GetProperty("state").GetString(), disconnected = !view.HasWorker }));
-        }
-        catch (Exception error)
-        {
-            string? cleanupError = null;
-            try { await view.DisconnectAsync(); } catch (Exception cleanup) { cleanupError = cleanup.Message; }
-            if (!string.IsNullOrEmpty(output)) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = error.ToString(), cleanupError }));
-        }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeSharedAsync(ConnectionView connection)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var result = await connection.ConnectAsync();
-            await Task.Delay(TimeSpan.FromSeconds(16));
-            if (output != null) await File.WriteAllTextAsync(output,
-                JsonSerializer.Serialize(new { shared = connection.IsSharedConnection,
-                    hostPid = connection.WorkerPid, state = result.GetProperty("snapshot").GetProperty("state").GetString() }));
-        }
-        catch (Exception error)
-        {
-            if (output != null) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = error.Message }));
-        }
-        finally
-        {
-            // WM_CLOSE exercises the same AppWindow.Closing path as the title-bar close button.
-            if (window != null)
-                PostCloseMessage(WinRT.Interop.WindowNative.GetWindowHandle(window), 0x0010, IntPtr.Zero, IntPtr.Zero);
-        }
-    }
-
-    private async Task SmokeUpdateAsync(UpdateSettingsView updates)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            await updates.CheckAsync(Environment.GetEnvironmentVariable("GH_TOKEN") ??
-                Environment.GetEnvironmentVariable("GITHUB_TOKEN"));
-            await Task.Delay(TimeSpan.FromSeconds(16));
-            if (output != null) await File.WriteAllTextAsync(output,
-                JsonSerializer.Serialize(new { state = updates.LastState, gameAttached = false }));
-        }
-        catch { if (output != null) await File.WriteAllTextAsync(output, "{\"error\":\"update smoke failed\"}"); }
-        finally { window?.Close(); }
-    }
-
-    private async Task SmokeCliAsync(CliSettingsView settings, string? testRoot)
-    {
-        await Task.Delay(16000);
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        if (output != null) await File.WriteAllTextAsync(output, "{\"npmInstructions\":true,\"bundledInstallation\":false}");
-        window?.Close();
-    }
-
-    private async Task SmokeAsync(Func<Task<ProbeResult>> detect)
-    {
-        var output = Environment.GetEnvironmentVariable("SWGOH_SHELL_SMOKE_RESULT");
-        try
-        {
-            var probe = await detect();
-            await Task.Delay(TimeSpan.FromSeconds(16));
-            if (!string.IsNullOrEmpty(output))
-                await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { windowCreated = window != null, probe, gameAttached = false }));
-        }
-        catch (Exception e)
-        {
-            if (!string.IsNullOrEmpty(output)) await File.WriteAllTextAsync(output, JsonSerializer.Serialize(new { error = e.ToString() }));
-        }
-        finally { window?.Close(); }
+        PackageActivation.Ready(arguments=>window.DispatcherQueue.TryEnqueue(()=>_ =OpenPackagesAsync(arguments)));
+        if(!Environment.GetCommandLineArgs().Any(a=>a.StartsWith("--smoke")))connection.StartAutomaticConnection();
+        _ =RefreshPackagesAsync();
+        async Task RefreshPackagesAsync(){try{await mods.RefreshAsync();}catch{}}
     }
 }
-

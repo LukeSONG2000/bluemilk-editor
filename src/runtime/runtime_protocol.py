@@ -24,7 +24,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
                     'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
-                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-set-enabled','mods-command',
+                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-set-enabled','mods-command','mods-query',
                     'trial-prepare','trial-start','trial-status','trial-control','trial-stop'})
 
 
@@ -93,15 +93,23 @@ class ProtocolSession:
                               gameOperations=sorted(GAME_OPERATIONS),
                               lifecycle='Explicit connect; exclusive runtime ownership; EOF disconnects',
                               validation='Native callbacks retain original checks; a dispatch receipt is not settlement')
-            elif operation == 'mods-command':
+            elif operation in ('mods-command', 'mods-query'):
                 if runtime is not native_runtime:
                     raise ValueError('Mod commands require the normal runtime')
                 if (not payload or set(payload) != {'id', 'command', 'payload'}
                         or not isinstance(payload['id'], str) or not isinstance(payload['command'], str)
                         or not isinstance(payload['payload'], dict)):
                     raise ValueError('Mod command requires id, command and object payload')
+                if operation == 'mods-query':
+                    state = runtime.call_args('modcommand', 'list', {})
+                    selected = next((m for m in state.get('mods', []) if m['manifest']['id'] == payload['id']), None)
+                    if (not selected or selected['state'] != 'enabled'
+                            or selected['manifest'].get('desktop', {}).get('query') != payload['command']):
+                        raise ValueError('Query must be declared by an enabled Mod desktop schema')
                 result = runtime.call_args('modinvoke', payload['id'], payload['command'], payload['payload'])
                 if isinstance(result, dict) and 'blueMilkHostOperation' in result:
+                    if operation == 'mods-query':
+                        raise ValueError('Mod queries cannot dispatch host game operations')
                     if (set(result) != {'blueMilkHostOperation', 'operation', 'payload'}
                             or type(result['blueMilkHostOperation']) is not int or result['blueMilkHostOperation'] != 1
                             or result['operation'] not in GAME_OPERATIONS

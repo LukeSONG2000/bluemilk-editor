@@ -80,6 +80,16 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('ledger full', result['error']['message'])
         self.runtime.call.assert_called_once()
 
+    async def test_mod_ui_polling_uses_bounded_read_cache(self):
+        self.runtime.call_args=Mock(side_effect=lambda op,*args: {'mods':[{'manifest':{'id':'org.example.ui','desktop':{'query':'view'}},'state':'enabled'}]} if op=='modcommand' else {'value':True})
+        for index in range(300):
+            reply=await self.server.dispatch(json.dumps({'jsonrpc':'2.0','id':f'ui-{index}',
+                'method':'runtime.call','params':{'instance':self.server.instance,'operation':'mods-query',
+                'payload':{'id':'org.example.ui','command':'view','payload':{}}}}))
+            self.assertIn('result',reply)
+        self.assertEqual(len(self.server._responses),0)
+        self.assertLessEqual(len(self.server._reads),256)
+
     async def test_auth_and_browser_origins_rejected_before_runtime(self):
         with self.assertRaises(InvalidStatus):
             async with connect(self.uri, proxy=None):

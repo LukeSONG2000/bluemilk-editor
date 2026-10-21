@@ -1,0 +1,89 @@
+# SDK 2
+
+Editor supplies connection, original-game adapters, package verification and
+resource lifetime. Mods supply feature code, formatting, native UI policy,
+desktop declarations and command handlers. Pro's implementation is maintained in
+the separate `bluemilk-pro` repository, not bundled with Editor.
+
+## Package modules
+
+Set `sdkVersion: 2`. The entry exports a synchronous factory accepting `sdk`.
+Package-local `require('./module')` resolves `.js` and `.json` from the verified
+file inventory, with module caching and bounded relative traversal. Node modules,
+filesystem imports and imports outside the package are unavailable.
+Inspection and registration never evaluate module bodies; enabling evaluates
+them. Integrity checks do not authenticate the publisher or sandbox trusted code.
+
+## Generic resources and adapters
+
+`sdk.lifecycle.own(handle)` adopts a resource during the factory. A handle has
+`ready`, `status()` with `lifecycle`, and `stop()` confirming `stopped`.
+`sdk.lifecycle.compose({command})` returns a composite lifecycle, cleaning resources
+in reverse order and retaining failed cleanup for an explicit retry. A factory
+throwing after adoption leaves owned handles available for cleanup.
+
+`native.ui` grants supported access to `sdk.native.runtime` and
+`sdk.native.scene`, the existing IL2CPP/main-thread/Unity adapters. It does not
+install a feature. The package owns hooks, labels, restoration and timers.
+`sdk.native.on(topic, callback)` subscribes during the factory and automatically
+unsubscribes during cleanup. `ui.popup.updated` carries native `popup` and `unit`
+handles after an explicitly requested original status popup opens.
+
+`sdk.native.readStatus(unit)` and `sdk.battle.snapshot({detailScope:'selected'})`
+read original battle data; the latter is callable within Mod commands and returns
+a copied JSON value. `sdk.game.unitName(id)` reads the supplied original name map
+and falls back to the ID. Labels, grouping, numeric formatting and interpretation
+for a product page belong to the Mod.
+
+Native APIs are for trusted in-process code. Capability checks describe supported
+use, not a security boundary. In particular, a read-query contract is not a sandbox.
+
+## Desktop declarations
+
+The manifest may declare:
+
+```json
+"desktop": {
+  "version": 1,
+  "query": "view",
+  "refreshMs": 1000,
+  "features": [
+    {"id":"enabled","title":"Feature","kind":"toggle",
+     "binding":"enabled","command":"set-enabled","home":true},
+    {"id":"details","title":"Details","kind":"table","binding":"details",
+     "columns":[{"key":"name","title":"Name"},{"key":"value","title":"Value"}],"home":true}
+  ]
+}
+```
+
+The generic renderer supports toggle, button, text and table. A table view model
+contains optional `title`, `summary` strings, and `rows` objects keyed by columns.
+Each view-model property is selected by its feature's top-level `binding`.
+Toggle commands receive `{value:boolean}`. Button commands receive `{}`.
+Queries receive `{features:[featureIds]}` so hidden tables need not read game data.
+The homepage requests only visible toggles; tables use a button opening the Mod page.
+
+The schema is bounded: 32 features, 8 columns, query interval 1–60 seconds. It
+contains data, not XAML/HTML or executable binding expressions. Packages own titles,
+column definitions and view models. Host settings own homepage visibility.
+
+## Shared client / CLI operations
+
+`mods-query` has `{id,command,payload}` and accepts only the query declared by an
+enabled Mod. Responses use the bounded read cache, preserving the durable mutation
+ledger for writes. Queries must be side-effect-free and cannot request host game
+operation handoffs. `mods-command` remains the explicit mutation channel.
+
+`mods-set-enabled` has `{id,sha256,enabled}`. It saves a persistent preference,
+works offline, and applies it to a connected session. Selecting a new version
+first requires confirmed old-version cleanup, then loads the new verified package.
+Failed cleanup retains the old registration. Failed new activation is reported
+separately from saved intent; it is not silently replayed.
+
+## Migration
+
+The old `sdk.battle.information.install()` provider was removed. Packages declaring
+the legacy `battle.information.ui` capability with SDK 1 are rejected before entry
+execution, with an update instruction. Pro 0.2.0 requires Editor 0.2.0 or later.
+Generic SDK 1 lifecycle packages remain supported. Historical Ultra adapters have
+not been migrated by this change; no Ultra package is bundled or enabled.

@@ -71,7 +71,8 @@ def _registration(sha256, root):
         raise ValueError('Stored package integrity failed')
     record = inspect_bytes(raw)
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-        source = archive.read(record['manifest']['entry']).decode('utf-8')
+        from mod_modules import bundle
+        source = bundle(archive, record['manifest'])
     return record['manifest'], source, sha256
 
 

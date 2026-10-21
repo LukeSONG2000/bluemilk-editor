@@ -40,7 +40,7 @@ def validate_manifest(value):
         text = value.get(key)
         if not isinstance(text, str) or not text.strip() or len(text) > 256:
             raise ValueError('Invalid Mod ' + key)
-    if type(value.get('sdkVersion')) is not int or value['sdkVersion'] != 1:
+    if type(value.get('sdkVersion')) is not int or value['sdkVersion'] not in (1, 2):
         raise ValueError('Unsupported SDK')
     if value.get('gameProfile') != 'swgoh-0.40.7':
         raise ValueError('Unsupported game profile')
@@ -63,6 +63,9 @@ def validate_manifest(value):
     if 'configuration' in value:
         from mod_config_schema import validate_schema
         validate_schema(value['configuration'])
+    if 'desktop' in value:
+        from mod_desktop_schema import validate
+        validate(value['desktop'])
     if 'icon' in value and (not isinstance(value['icon'], str) or not safe_name(value['icon']).endswith('.png')):
         raise ValueError('Icon must be a package-local PNG path')
     return value

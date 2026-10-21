@@ -15,10 +15,10 @@ from quest_claims import QuestClaims, validate as validate_quest
 ASSETS = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'assets'
 DATA = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'SWGoH-Tool'
 EXPECTED = '12cc254525a58aedea122a2967d0476da05b98ef0c219dc18cfc0b7207538db6'
-MODULES = ['runtime_api.js', 'unity_scene_api.js', 'battle_status_reader.js',
+MODULES = ['runtime_api.js', 'unity_scene_api.js', 'native_signals.js', 'battle_status_reader.js',
            'battle_attributes_reader.js', 'battle_input.js', 'runtime_observer.js',
            'enemy_manual_ui.js', 'enemy_input_gate.js', 'live_arena_taunt.js', 'calendar_bridge.js',
-           'battle_info_ui.js', 'battle_events.js', 'original_ai_trace.js', 'ai_trace_mod.js', 'mod_runtime.js', 'trial_mod.js']
+           'battle_events.js', 'original_ai_trace.js', 'ai_trace_mod.js', 'mod_runtime.js', 'trial_mod.js']
 def find_game():
     games = []
     for p in psutil.process_iter(['pid','name','exe','cmdline']):
@@ -53,6 +53,8 @@ class Runtime:
         self.quest_claims = QuestClaims(DATA/'quest-claims')
 
     def connect(self, information=False):
+        if information:
+            raise ValueError("Built-in information UI was removed; install and enable an SDK 2 Mod")
         if self.session:
             if self.initialized:
                 return {'pid': self.game_pid, 'snapshot': self.call('inspect'), 'reused': True}
@@ -61,7 +63,8 @@ class Runtime:
             self.disconnect()
         game = find_game()
         modules = MODULES.copy()
-        source = 'globalThis.deferBattleInfoInstallation=true;\n'
+        names = ASSETS / 'names.json'
+        source = 'globalThis.BlueMilkNames='+json.dumps(json.loads(names.read_text(encoding='utf-8-sig')) if names.exists() else {})+';\n'
         source += '\n'.join((ASSETS / n).read_text(encoding='utf-8-sig') for n in modules)
         source += '\n' + (ASSETS / 'bridge.js').read_text(encoding='utf-8')
         DATA.mkdir(parents=True, exist_ok=True)
@@ -85,10 +88,6 @@ class Runtime:
             for identity, _ in selected:
                 if startup['selections'][identity]['enabled']:
                     self.call_args('modcommand', 'enable', {'id': identity})
-            if information:
-                if 'bluemilk.pro' not in startup['selections']:
-                    raise RuntimeError('Install BlueMilk Pro and select it in startup settings before enabling information')
-                self.script.exports_sync.modcommand('enable', {'id':'bluemilk.pro'})
             self.inbox_claims = InboxClaims(DATA/'inbox-claims')
             self.calendar_claims = CalendarClaims(DATA/'calendar-claims')
             self.quest_claims = QuestClaims(DATA/'quest-claims')
@@ -118,8 +117,14 @@ class Runtime:
         if self.script:
             mods = self.call_args('modcommand', 'list', {}).get('mods', [])
             current = next((m for m in mods if m['manifest']['id'] == identity), None)
-            if current and current.get('packageSha256') != sha256:
-                raise ValueError('A different version is loaded; restore the session before switching versions')
+            if current and current.get('packageSha256') != sha256 and enabled:
+                previous = current.get('packageSha256')
+                result = self.call_args('modunregisterpackage', identity, previous)
+                if not isinstance(result, dict) or result.get('unregistered') is not True:
+                    raise RuntimeError('Previous Mod cleanup was not confirmed; update not applied')
+                if previous in self.package_leases:
+                    self.package_leases.pop(previous)[1]()
+                current = None
         profile = read()
         selections = {**profile['selections'], identity: {'sha256': sha256, 'enabled': enabled}}
         saved = write(profile['revision'], selections, owned_hashes=self.package_leases)

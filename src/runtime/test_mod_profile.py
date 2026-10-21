@@ -66,6 +66,30 @@ class ProfileTests(unittest.TestCase):
                     write(read()['revision'], {})
             finally: release()
 
+    def test_package_update_requires_confirmed_old_cleanup_before_profile_change(self):
+        with patch.dict(os.environ, USERPROFILE=self.temp.name):
+            old=self.package(version='1.0.0');new=self.package(version='2.0.0')
+            write(read()['revision'],{'org.example.reader':old})
+            payload,release=acquire_package(old['sha256'])
+            runtime=Runtime();runtime.script=Mock();runtime.package_leases[old['sha256']]=(payload,release)
+            cleanup=False
+            def native(operation,*args):
+                if operation=='modcommand' and args[0]=='list':return {'mods':[{'manifest':payload[0],'packageSha256':old['sha256']}]}
+                if operation=='modunregisterpackage':return {'unregistered':cleanup}
+                return {}
+            try:
+                with patch.object(runtime,'call_args',side_effect=native):
+                    with self.assertRaisesRegex(RuntimeError,'cleanup'):
+                        runtime.set_mod_enabled('org.example.reader',new['sha256'],True)
+                    self.assertEqual(read()['selections']['org.example.reader'],old)
+                    self.assertIn(old['sha256'],runtime.package_leases)
+                    cleanup=True
+                    result=runtime.set_mod_enabled('org.example.reader',new['sha256'],True)
+                    self.assertTrue(result['applied'])
+                    self.assertEqual(read()['selections']['org.example.reader'],new)
+                    self.assertNotIn(old['sha256'],runtime.package_leases)
+            finally:runtime._release_packages()
+
     def test_upgrade_rollback_revisions_and_persistence(self):
         with patch.dict(os.environ, USERPROFILE=self.temp.name):
             old = self.package()

@@ -41,7 +41,7 @@ rpc.exports={
    return {roster,ready:roster.length>0};
    });roster=selection.roster;arenaReady=selection.ready;
   }
-  return {...snapshot,arena,roster,arenaReady,display:globalThis.battleInfoStatus?battleInfoStatus():null};
+  return {...snapshot,arena,roster,arenaReady};
  },
  arm(request){return RuntimeApi.runOnMainThreadOnce(()=>{
   const R=RuntimeApi;
@@ -74,10 +74,6 @@ rpc.exports={
  disarm(){return RuntimeApi.runOnMainThreadOnce(()=>{if(desktopArena)desktopArena.stop();return arenaSnapshot();});},
  async shutdown(){
   if(globalThis.BlueMilkMods)await BlueMilkMods.shutdown();
-  else if(globalThis.stopBattleInfo){
-   const result=await stopBattleInfo();
-   if(result.lifecycle==='cleanup-failed')throw Error('Information UI cleanup failed');
-  }
   await RuntimeApi.runOnMainThreadOnce(()=>{if(desktopArena)desktopArena.stop();});
   return {stopped:true};
  }

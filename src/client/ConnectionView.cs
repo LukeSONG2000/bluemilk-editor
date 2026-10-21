@@ -23,7 +23,6 @@ internal sealed class ConnectionView : StackPanel
     internal int? WorkerPid => runtime?.WorkerPid;
     internal bool IsConnected => connected;
     internal bool CanRefresh => connected && !busy && !disconnectRequested;
-    internal bool InformationEnabled { get; set; }
     internal bool IsTrialObserver { get; private set; }
     internal bool IsPreparedTrial { get; private set; }
     internal event Action? StateChanged;
@@ -139,14 +138,7 @@ internal sealed class ConnectionView : StackPanel
             if (result.TryGetProperty("pid", out var pid) && pid.ValueKind == JsonValueKind.Number) gamePid = pid.GetInt32();
             connected = true;
             ShowSnapshot(IsTrialObserver ? result : result.GetProperty("snapshot"));
-            if (InformationEnabled && !IsPreparedTrial && !IsTrialObserver) {
-                try { await runtime.RequestAsync("mods-enable", new { id = "bluemilk.pro" }); }
-                catch (RemoteCommandException) {
-                    status.Severity = InfoBarSeverity.Warning;
-                    status.Message = "游戏已连接；信息拓展未启用。请在 Mod 管理中安装、载入并启用 BlueMilk Pro。";
-                }
-            }
-            await ReadInformationStateAsync();
+            await ReadModStateAsync();
             return result;
         }
         catch (Exception error) {
@@ -158,39 +150,24 @@ internal sealed class ConnectionView : StackPanel
         finally { busy = false; Buttons(); }
     }
 
-    private async Task ReadInformationStateAsync()
+    private async Task ReadModStateAsync()
     {
         if (runtime == null || IsPreparedTrial || IsTrialObserver) return;
         var profile = await runtime.RequestAsync("mods-profile-read");
         ModProfileChanged?.Invoke(profile.GetProperty("selections").Clone());
         var state = await runtime.RequestAsync("mods-list");
         RuntimeModsChanged?.Invoke(state.GetProperty("mods").Clone());
-        InformationEnabled = state.GetProperty("mods").EnumerateArray().Any(m =>
-            m.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro" && m.GetProperty("state").GetString() == "enabled");
     }
 
-    internal async Task SetInformationAsync(bool enabled)
+    internal async Task<JsonElement> ModCommandAsync(string id, string command, object payload, bool query=false)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (busy && connected && DateTime.UtcNow < deadline) await Task.Delay(25);
-        if (!CanRefresh || runtime == null || IsPreparedTrial || IsTrialObserver)
-            throw new InvalidOperationException("正在连接或同步游戏，请稍后重试。");
-        busy = true; Buttons();
-        try {
-            var state = await runtime.RequestAsync("mods-list");
-            var mod = state.GetProperty("mods").EnumerateArray().FirstOrDefault(m => m.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro");
-            if (enabled && mod.ValueKind == JsonValueKind.Undefined) {
-                var packages = await runtime.RequestAsync("mods-package-list");
-                var package = packages.GetProperty("packages").EnumerateArray()
-                    .Where(p => p.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro")
-                    .OrderByDescending(p => Version.Parse(p.GetProperty("manifest").GetProperty("version").GetString()!)).FirstOrDefault();
-                if (package.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("请先在 Mod 管理中添加 BlueMilk Pro 包。");
-                await runtime.RequestAsync("mods-package-register", new { sha256 = package.GetProperty("sha256").GetString() });
-            }
-            if (enabled || mod.ValueKind != JsonValueKind.Undefined)
-                await runtime.RequestAsync(enabled ? "mods-enable" : "mods-disable", new { id = "bluemilk.pro" });
-            await ReadInformationStateAsync();
-        } finally { busy = false; Buttons(); }
+        var deadline=DateTime.UtcNow.AddSeconds(10);
+        while(busy && connected && DateTime.UtcNow<deadline) await Task.Delay(25);
+        if(!CanRefresh || runtime==null || IsPreparedTrial || IsTrialObserver)
+            throw new InvalidOperationException("等待自动连接游戏。");
+        busy=true;
+        try { return await runtime.RequestAsync(query ? "mods-query" : "mods-command",new { id, command, payload }); }
+        finally { busy=false; }
     }
 
     internal async Task<JsonElement> PrepareTrialAsync(object payload)
@@ -248,7 +225,7 @@ internal sealed class ConnectionView : StackPanel
         {
             var result = await runtime.RequestAsync("snapshot");
             ShowSnapshot(result);
-            if (!IsPreparedTrial && !IsTrialObserver) await ReadInformationStateAsync();
+            if (!IsPreparedTrial && !IsTrialObserver) await ReadModStateAsync();
             return result;
         }
         catch (Exception error) { Failure(error); connected = false; throw; }
@@ -306,7 +283,7 @@ internal sealed class ConnectionView : StackPanel
         detail.Text = IsPreparedTrial ? "共享试玩会话由服务持有；关闭窗口保留试玩。“停止”或“断开并恢复”会等待恢复酒馆，并影响所有已连接入口。"
             : IsTrialObserver ? "仅读取已有私人试玩，不另行注入。"
             : runtime?.IsShared == true ? "自动连接正常。关闭客户端保留共享服务与 Mod，重新打开时自动恢复连接。"
-            : InformationEnabled ? "本次连接已启用游戏内信息拓展。敌方控制可在战斗助手中单独配置。" : "已连接共享运行时；Mod 管理页显示当前状态与下次连接的启动选择。";
+            : "已连接共享运行时。";
         SnapshotChanged?.Invoke(snapshot);
     }
 

@@ -17,7 +17,6 @@
     <Compile Include="../client/ServerEndpoint.cs" Link="ServerEndpoint.cs" />
     <Compile Include="../client/SharedPaths.cs" Link="SharedPaths.cs" />
     <Compile Include="../client/ServerLauncher.cs" Link="ServerLauncher.cs" />
-    <Compile Include="../client/BattlePresentation.cs" Link="BattlePresentation.cs" />
     <Compile Include="../client/EnemyControlModel.cs" Link="EnemyControlModel.cs" />
     <Compile Include="../client/PackageOpenArguments.cs" Link="PackageOpenArguments.cs" />
     <Compile Include="../client/CapturePresentation.cs" Link="CapturePresentation.cs" />

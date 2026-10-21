@@ -155,8 +155,8 @@ globalThis.BattleInputBridge=(()=>{
   const popup=R.readRef(view,'_effectDetailsPopup');
   const displayed=!popup.isNull()&&!!R.readValue(popup,'<IsDisplaying>k__BackingField','bool');
   const actual=displayed?S.string(R.readRef(popup,'<SelectedUnitId>k__BackingField')):null;
-  if(displayed&&actual===request.unitId&&globalThis.battleInfoRefreshPopup)
-   battleInfoRefreshPopup(popup,S.invoke('BattleMessageReticle','get_TargetUnit',matches[0]));
+  if(displayed&&actual===request.unitId&&globalThis.NativeSignals)
+   NativeSignals.emit('ui.popup.updated',{popup,unit:S.invoke('BattleMessageReticle','get_TargetUnit',matches[0])});
   return {transitionConfirmed:displayed&&actual===request.unitId,unitId:actual,
    invoked:'BattleMessageReticle.OnLongPress',displayed};
  }

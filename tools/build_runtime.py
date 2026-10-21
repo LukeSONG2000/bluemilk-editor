@@ -14,11 +14,11 @@ from runtime_core import MODULES
 from protobuf_defaults import read_schema_bundle
 
 TRIAL = [
-    "runtime_api.js", "unity_scene_api.js", "offline_socket_guard.js",
+    "runtime_api.js", "unity_scene_api.js", "native_signals.js", "offline_socket_guard.js",
     "original_fixture.js", "battle_proto.js", "isolated_inventory.js",
     "captured_battle.js", "definition_scope.js", "selected_squad.js",
     "captured_trial.js", "battle_instance_identity.js", "battle_status_reader.js",
-    "battle_info_ui.js", "battle_attributes_reader.js", "battle_input.js",
+    "battle_attributes_reader.js", "battle_input.js",
     "runtime_observer.js", "trial_input.js", "frame_profile.js",
     "graphics_profile.js", "loading_profile.js", "original_ai_trace.js",
     "original_ai_priority.js", "enemy_manual_ui.js", "enemy_input_gate.js",
@@ -52,6 +52,10 @@ def prepare(names_path, schema_path):
     native = ROOT / "src/native"
     modules = sorted(set(MODULES + ["bridge.js", "battle_proto.js", "battle_capture.js"]))
     for folder, selected in [(assets, modules), (trial, TRIAL)]:
+        # Generated payloads must not retain removed providers from an older build.
+        for stale in folder.glob('*.js'):
+            if stale.name not in selected:
+                stale.unlink()
         for name in selected:
             shutil.copyfile(native / name, folder / name)
     (assets / "names.json").write_bytes(names_bytes)

@@ -1206,7 +1206,6 @@ globalThis.readRuntimeSnapshot=(options={})=>{
  populateBattleDetails(result,unitObjects,detailScope,timing);
  timing.totalMainThreadMs=Date.now()-snapshotStarted;
  result.snapshotTiming=timing;
- if(globalThis.battleInfoStatus){const info=battleInfoStatus();result.uiTiming={timing:info.timing,popupVisibilityChecks:info.popupVisibilityChecks,coldPopupProfile:info.coldPopupProfile};}
  return result;
 });
 };

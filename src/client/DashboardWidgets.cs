@@ -94,6 +94,7 @@ internal sealed class DashboardView : StackPanel
     private readonly ConnectionView connection;
     private readonly Dictionary<string, DashboardFeature[]> features = new();
     private HashSet<string> enabled = new();
+    private readonly Dictionary<string,string> titles = new();
     internal DashboardView(ConnectionView connection, DashboardPreferences preferences) {
         this.connection = connection; this.preferences = preferences;
         Spacing = 24; Padding = new Thickness(24, 8, 24, 24);
@@ -101,7 +102,8 @@ internal sealed class DashboardView : StackPanel
         preferences.Changed += Rebuild;
         connection.StateChanged += () => { foreach (var w in widgets) w.Refresh(connection.IsConnected); };
     }
-    internal void Register(string modId, DashboardFeature[] items) { features[modId] = items; Rebuild(); }
+    internal void Register(string modId, string title, DashboardFeature[] items) { titles[modId]=title; features[modId] = items; Rebuild(); }
+    internal void Remove(string modId) { titles.Remove(modId); features.Remove(modId); Rebuild(); }
     internal void Running(JsonElement mods) {
         var next = mods.EnumerateArray().Where(x => x.GetProperty("state").GetString() == "enabled")
             .Select(x => x.GetProperty("manifest").GetProperty("id").GetString()!).ToHashSet();
@@ -111,7 +113,7 @@ internal sealed class DashboardView : StackPanel
         shortcuts.Children.Clear(); widgets.Clear();
         foreach (var (id, items) in features.Where(x => enabled.Contains(x.Key))) {
             var visible = items.Where(x => preferences.Visible(x.Id)).ToArray(); if (visible.Length == 0) continue;
-            shortcuts.Children.Add(new TextBlock { Text = id == "bluemilk.pro" ? "BlueMilk Pro" : id, FontSize = 18, Margin = new Thickness(0, 4, 0, 4) });
+            shortcuts.Children.Add(new TextBlock { Text = titles.GetValueOrDefault(id,id), FontSize = 18, Margin = new Thickness(0, 4, 0, 4) });
             foreach (var feature in visible) { var w = new DashboardWidget(feature); w.Refresh(connection.IsConnected); widgets.Add(w); shortcuts.Children.Add(w); }
         }
         if (widgets.Count == 0) shortcuts.Children.Add(new TextBlock { Text = "暂无快捷功能", Opacity = .65 });
@@ -149,7 +151,7 @@ internal sealed class ModDetailView : StackPanel
         var image = ModIcon.Create(package); image.Width = image.Height = 40; icon.Content = image;
         metadata.Text = m.GetProperty("version").GetString() + "  ·  " + m.GetProperty("publisher").GetString();
         description.Text = m.TryGetProperty("description", out var d) ? d.GetString() :
-            m.GetProperty("id").GetString() == "bluemilk.pro" ? "原版信息辅助" : "玩法扩展";
+            "";
         metadata.Text += "\n来源：" + (m.TryGetProperty("repository", out var source) ? source.ToString() : "本地安装包");
     }
 }

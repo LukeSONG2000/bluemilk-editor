@@ -15,7 +15,7 @@ class SessionLockTests(unittest.TestCase):
         runtime=app.Runtime();release=Mock()
         with tempfile.TemporaryDirectory() as root:
             assets=Path(root)
-            for name in app.MODULES+['battle_info_ui.js','bridge.js']:
+            for name in app.MODULES+['bridge.js']:
                 (assets/name).write_text('',encoding='utf-8')
             with patch.object(app,'ASSETS',assets),patch.object(app,'DATA',assets),patch.object(app,'find_game',return_value={'pid':123}),patch.object(app,'acquire_session',return_value=release),patch.object(app.frida,'attach',side_effect=RuntimeError('attach failed')):
                 with self.assertRaisesRegex(RuntimeError,'attach failed'):runtime.connect()

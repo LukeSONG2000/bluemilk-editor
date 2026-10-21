@@ -1,5 +1,9 @@
 # SDK v1 — currently implemented interface
 
+> Historical SDK 1 documentation. The bundled information UI described below was
+> removed in Editor 0.2.0. See [SDK 2](API-v2.md) for current resource ownership,
+> package modules, desktop components and independent Pro installation.
+
 Mod entry points export a synchronous CommonJS factory:
 
 ```javascript
