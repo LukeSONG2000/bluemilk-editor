@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -55,12 +55,14 @@ public sealed partial class ShellApplication : Application
     {
         window = new Window { Title = "BlueMilk Editor" };
         window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "account-portrait.ico"));
-        var content = new ConnectionView();
-        var overviewView = new ScrollViewer { Content = content };
-        var navigation = new NavigationView { PaneTitle = "BlueMilk Editor", IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
+        var content = new ConnectionView(() => WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var preferences = new DashboardPreferences();
+        var dashboard = new DashboardView(content, preferences);
+        var overviewView = new ScrollViewer { Content = dashboard };
+        var navigation = new NavigationView { IsTitleBarAutoPaddingEnabled = false, IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
             IsSettingsVisible = false, PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
             IsPaneOpen = true, IsPaneToggleButtonVisible = false, OpenPaneLength = 230, Content = overviewView };
-        var overview = new NavigationViewItem { Content = "概览", Icon = new SymbolIcon(Symbol.Home) };
+        var overview = new NavigationViewItem { Content = "主页", Icon = new SymbolIcon(Symbol.Home) };
         navigation.MenuItems.Add(overview);
         navigation.SelectedItem = overview;
         var modsItem = new NavigationViewItem { Content = "Mod 管理", Icon = new SymbolIcon(Symbol.Library) };
@@ -75,7 +77,7 @@ public sealed partial class ShellApplication : Application
             (ReferenceEquals(navigation.SelectedItem, battleItem) || (navigation.SelectedItem as NavigationViewItem)?.Tag as string == "bluemilk.pro") && window.AppWindow.IsVisible &&
             !(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
               presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized), includeController: false, title: "BlueMilk Pro");
-        var battleView = new ScrollViewer { Content = battle };
+        var battleView = new ScrollViewer();
         var trialItem = new NavigationViewItem { Content = "试玩" };
 
         var trial = new TrialCaptureView(content, () => WinRT.Interop.WindowNative.GetWindowHandle(window));
@@ -95,13 +97,29 @@ public sealed partial class ShellApplication : Application
             }
         }
         content.RuntimeModsChanged += UpdateRunningMods;
+        content.RuntimeModsChanged += dashboard.Running;
+        content.RuntimeModsChanged += mods.SyncRuntime;
+        mods.RuntimeModsChanged += dashboard.Running;
         mods.RuntimeModsChanged += UpdateRunningMods;
         content.StateChanged += () => {
-            if (!content.IsConnected) UpdateRunningMods(JsonSerializer.SerializeToElement(Array.Empty<object>()));
+            mods.SyncConnection(content.IsConnected);
+            if (!content.IsConnected) {
+                var none = JsonSerializer.SerializeToElement(Array.Empty<object>());
+                UpdateRunningMods(none); dashboard.Running(none);
+            }
         };
+        var proFeatures = new[] {
+            new DashboardFeature("bluemilk.pro.information", "游戏内信息拓展", WidgetKind.Toggle,
+                () => content.InformationEnabled, value => content.SetInformationAsync((bool)value!)),
+            new DashboardFeature("bluemilk.pro.attributes", "实时属性", WidgetKind.Button,
+                () => null, _ => { navigation.SelectedItem = proItem; return Task.CompletedTask; })
+        };
+        dashboard.Register("bluemilk.pro", proFeatures);
+        var proPage = new ModDetailView("BlueMilk Pro", battle, proFeatures, preferences);
+        battleView.Content = proPage;
         packagePages["bluemilk.pro"] = battleView;
         var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
-        ultraPage.Children.Add(new TextBlock { Text = "BlueMilk Ultra", FontSize = 28 });
+
         var ultraStatus = new InfoBar { IsOpen = true, IsClosable = false, Title = "开发中 · 未安装", Message = "现有玩法扩展正在迁入 Ultra，尚未发布可安装包。" };
         ultraPage.Children.Add(ultraStatus);
         foreach (var feature in new[] {
@@ -111,11 +129,17 @@ public sealed partial class ShellApplication : Application
             ultraPage.Children.Add(new Expander { Header = feature.Item1, HorizontalAlignment = HorizontalAlignment.Stretch,
                 Content = new TextBlock { Text = feature.Item2 + "\n待迁入 Ultra 包，当前不可用。", TextWrapping = TextWrapping.Wrap } });
         }
-        packagePages["bluemilk.ultra"] = new ScrollViewer { Content = ultraPage };
+        var ultraDetail = new ModDetailView("BlueMilk Ultra", ultraPage, Array.Empty<DashboardFeature>(), preferences);
+        packagePages["bluemilk.ultra"] = new ScrollViewer { Content = ultraDetail };
         mods.PackagesChanged += packages => {
             foreach (var item in new[] { proItem, ultraItem }) {
                 var package = packages.EnumerateArray().LastOrDefault(p => p.GetProperty("manifest").GetProperty("id").GetString() == (string)item.Tag);
                 item.Icon = package.ValueKind == JsonValueKind.Undefined ? new SymbolIcon(Symbol.Document) : ModIcon.Create(package);
+            }
+            foreach (var id in new[] { "bluemilk.pro", "bluemilk.ultra" }) {
+                var current = packages.EnumerateArray().Where(p => p.GetProperty("manifest").GetProperty("id").GetString() == id)
+                    .OrderByDescending(p => Version.Parse(p.GetProperty("manifest").GetProperty("version").GetString()!)).FirstOrDefault();
+                if (current.ValueKind != JsonValueKind.Undefined) (id == "bluemilk.pro" ? proPage : ultraDetail).Package(current);
             }
             var ids = packages.EnumerateArray().Select(x => x.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
             ToolTipService.SetToolTip(proItem, ids.Contains("bluemilk.pro") ? "已安装" : "未安装");
@@ -128,9 +152,12 @@ public sealed partial class ShellApplication : Application
         navigation.FooterMenuItems.Add(settings);
         var cliSettings = new CliSettingsView(testRoot);
         var updates = new UpdateSettingsView();
-        var settingsContent = new StackPanel();
-        settingsContent.Children.Add(updates);
-        settingsContent.Children.Add(cliSettings);
+        var settingsContent = new StackPanel { Spacing = 16, Padding = new Thickness(32,24,32,32) };
+        updates.Padding = cliSettings.Padding = new Thickness(0);
+        updates.MaxWidth = cliSettings.MaxWidth = double.PositiveInfinity;
+        updates.HorizontalAlignment = cliSettings.HorizontalAlignment = HorizontalAlignment.Stretch;
+        settingsContent.Children.Add(FluentSurface.Card(updates));
+        settingsContent.Children.Add(FluentSurface.Card(cliSettings));
         var settingsView = new ScrollViewer { Content = settingsContent };
         navigation.SelectionChanged += (_, change) =>
         {
@@ -140,7 +167,19 @@ public sealed partial class ShellApplication : Application
                 : ReferenceEquals(change.SelectedItem, battleItem) ? battleView
                 : (change.SelectedItem as NavigationViewItem)?.Tag is string id && packagePages.TryGetValue(id, out var page) ? page : overviewView;
         };
-        window.Content = navigation;
+        window.ExtendsContentIntoTitleBar = true;
+        window.SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
+        var shell = new Grid();
+        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
+        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var titlebar = new Grid { Height = 48, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+        titlebar.Children.Add(new TextBlock { Text = "BlueMilk Editor", FontSize = 14, Margin = new Thickness(20,0,160,0), VerticalAlignment = VerticalAlignment.Center });
+        shell.Children.Add(titlebar); Grid.SetRow(navigation, 1); shell.Children.Add(navigation);
+        navigation.Resources["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        navigation.Resources["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        window.Content = shell; window.SetTitleBar(titlebar);
+        window.AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        window.AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
         window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1060, 720));
         bool allowingClose = false;
         window.AppWindow.Closing += async (_, closing) =>

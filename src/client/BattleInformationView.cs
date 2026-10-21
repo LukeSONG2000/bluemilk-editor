@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -29,20 +29,24 @@ internal sealed class BattleInformationView : StackPanel
         HorizontalAlignment = HorizontalAlignment.Stretch;
         var file = Path.Combine(AppContext.BaseDirectory, "data", "names.json");
         names = File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file))! : new();
-        Children.Add(new TextBlock { Text = title, FontSize = 28 });
-        Children.Add(information);
+
+        information.Header = null; information.OnContent = ""; information.OffContent = "";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(information, "游戏内信息拓展");
+        Children.Add(FluentSurface.Card(FluentSurface.Row(new TextBlock { Text = "游戏内信息拓展", VerticalAlignment = VerticalAlignment.Center }, information)));
         Children.Add(informationStatus);
-        Children.Add(new TextBlock { Text = "安装 BlueMilk Pro 后即可在连接状态下实时启停。游戏内显示血盾数字、敌方技能 CD 和有限状态回合数。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(connectionHint);
+
+
         var attributes = new StackPanel { Spacing = 12 };
         attributes.Children.Add(unit); attributes.Children.Add(pools); attributes.Children.Add(mastery);
-        attributes.Children.Add(new TextBlock { Text = "跟随游戏当前目标或长按面板，显示初始与当前属性。各项变化的影响来源尚未完成归因。", TextWrapping = TextWrapping.Wrap });
+        attributes.Children.Add(new TextBlock { Text = "属性变化来源归因尚未接入。", TextWrapping = TextWrapping.Wrap });
         attributes.Children.Add(Row("属性", "初始", "当前", "净变化"));
         attributes.Children.Add(table);
         Controller = new EnemyControlView(connection, names);
-        Sections.Items.Add(new PivotItem { Header = "实时属性", Content = attributes });
+        if (includeController) Sections.Items.Add(new PivotItem { Header = "实时属性", Content = attributes });
         if (includeController) Sections.Items.Add(new PivotItem { Header = "敌方控制", Content = Controller });
-        Children.Add(Sections);
+        if (includeController) Children.Add(Sections);
+        else Children.Add(new Expander { Header = "实时属性", Content = attributes, IsExpanded = true,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         information.Toggled += async (_, _) => {
             if (syncingInformation || changingInformation) return;
             changingInformation = true; informationStatus.IsOpen = false;

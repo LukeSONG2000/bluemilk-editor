@@ -10,7 +10,7 @@
 
 [Setup]
 AppId={{703A2E24-7644-42A6-83C5-06B7F84D01D1}
-AppName=BlueMilk Editor (EXE)
+AppName=BlueMilk Editor
 AppVersion={#AppVersion}
 AppPublisher=BlueMilk project
 DefaultDirName={localappdata}\Programs\BlueMilk Editor
@@ -30,13 +30,13 @@ DisableProgramGroupPage=yes
 CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
-UninstallDisplayName=BlueMilk Editor (EXE)
+UninstallDisplayName=BlueMilk Editor
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\BlueMilk Editor (EXE)"; Filename: "{app}\BlueMilk.Editor.exe"; WorkingDir: "{app}"
+Name: "{autoprograms}\BlueMilk Editor"; Filename: "{app}\BlueMilk.Editor.exe"; WorkingDir: "{app}"
 
 [Run]
 Filename: "{app}\BlueMilk.Editor.exe"; Description: "Launch BlueMilk Editor"; Flags: nowait postinstall skipifsilent

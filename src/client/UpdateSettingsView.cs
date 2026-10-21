@@ -13,7 +13,7 @@ internal sealed class UpdateSettingsView : StackPanel
     private readonly Button check = new() { Content = "检查更新" };
     private readonly Button download = new() { Content = "下载更新", IsEnabled = false };
     private readonly Button cancel = new() { Content = "取消", Visibility = Visibility.Collapsed };
-    private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "尚未检查更新" };
+    private readonly InfoBar status = new() { IsOpen = false, IsClosable = true, Title = "尚未检查更新" };
     private readonly ProgressBar progress = new() { IsIndeterminate = true, Visibility = Visibility.Collapsed };
     private ReleasePackage? available;
     private CancellationTokenSource? operation;
@@ -33,11 +33,10 @@ internal sealed class UpdateSettingsView : StackPanel
         {
             channel = UpdateChannel.Exe;
         }
-        Children.Add(new TextBlock { Text = "应用更新", FontSize = 28 });
+        Children.Add(new TextBlock { Text = "BlueMilk Editor", FontSize = 20 });
         Children.Add(new TextBlock { Text = $"BlueMilk Editor {version.Major}.{version.Minor}.{version.Build}" });
         Children.Add(new TextBlock { Text = $"从 GitHub Releases 获取正式版本。更新渠道：{channel.ToString().ToUpperInvariant()}。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(credential);
-        Children.Add(new TextBlock { Text = "公开仓库无需令牌；遇到访问限额时可选填。令牌仅用于本次会话，关闭应用后不保留。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(new Expander { Header = "GitHub 访问凭据", Content = credential });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(check); actions.Children.Add(download); actions.Children.Add(cancel);
         Children.Add(actions); Children.Add(progress); Children.Add(status);
@@ -60,7 +59,7 @@ internal sealed class UpdateSettingsView : StackPanel
         operation = new CancellationTokenSource();
         available = null;
         Busy(true);
-        status.Title = "正在检查更新"; status.Message = ""; status.Severity = InfoBarSeverity.Informational;
+        status.IsOpen = true; status.Title = "正在检查更新"; status.Message = ""; status.Severity = InfoBarSeverity.Informational;
         try
         {
             using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })

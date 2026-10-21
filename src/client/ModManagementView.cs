@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -22,11 +22,11 @@ internal sealed class ModManagementView : StackPanel
     private readonly TextBlock package = new() { Text = "选择 .bluemilk 文件以检查内容。", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     private readonly ListView list = new() { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 520, MinHeight = 120 };
-    private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "Mod 管理",
+    private readonly InfoBar status = new() { IsOpen = false, IsClosable = true, Title = "Mod 管理",
         Message = "安装不需要连接游戏。载入和启停前，请在概览中连接游戏。" };
     private readonly Func<nint> windowHandle;
     private string? inspectedPath, inspectedHash;
-    private bool busy, gameConnected;
+    private bool busy, gameConnected, syncingRows;
     private readonly Dictionary<string, JsonElement> runtimeMods = new();
     private JsonElement startupSelections;
     private sealed record Row(string Id, string Hash, string Name, string Version, string Usage);
@@ -36,15 +36,12 @@ internal sealed class ModManagementView : StackPanel
         this.windowHandle = windowHandle;
         Spacing = 16; Padding = new Thickness(24);
         HorizontalAlignment = HorizontalAlignment.Stretch;
-        Children.Add(new TextBlock { Text = "Mod 管理", FontSize = 28 });
-        Children.Add(new TextBlock { Text = "客户端与 CLI 共用已安装的 Mod 和运行状态。", TextWrapping = TextWrapping.Wrap });
         var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalAlignment = HorizontalAlignment.Left };
-        foreach (var command in new[] { choose, configure, uninstall, update, enable, disable }) commands.PrimaryCommands.Add(command);
-        commands.SecondaryCommands.Add(startup); commands.SecondaryCommands.Add(load); commands.SecondaryCommands.Add(refresh);
+        foreach (var command in new[] { choose, configure, uninstall, update }) commands.PrimaryCommands.Add(command);
+        commands.SecondaryCommands.Add(enable); commands.SecondaryCommands.Add(disable); commands.SecondaryCommands.Add(startup); commands.SecondaryCommands.Add(load); commands.SecondaryCommands.Add(refresh);
         Children.Add(commands);
-        Children.Add(ColumnRow("名称", "版本", "使用方式", "状态"));
-        Children.Add(list); Children.Add(empty); Children.Add(detail); Children.Add(status);
-        Children.Add(new TextBlock { Text = "拖入 .bluemilk 包即可安装；安装后可选中启用。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(ColumnRow("名称", "版本", "支持模式", ""));
+        Children.Add(list); Children.Add(empty); Children.Add(status);
         AllowDrop = true;
         Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         DragOver += (_, e) => {
@@ -79,6 +76,25 @@ internal sealed class ModManagementView : StackPanel
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(list, "mod-list");
         foreach (var command in new[] { choose, configure, uninstall, update, enable, disable })
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(command, "mod-" + command.Label);
+    }
+
+    internal void SyncConnection(bool connected) {
+        gameConnected = connected;
+        foreach (ListViewItem entry in list.Items)
+            foreach (var toggle in ((Grid)entry.Content).Children.OfType<ToggleSwitch>()) toggle.IsEnabled = connected && !busy;
+    }
+    internal void SyncRuntime(JsonElement mods) {
+        if (busy) return;
+        runtimeMods.Clear();
+        foreach (var mod in mods.EnumerateArray()) runtimeMods[mod.GetProperty("manifest").GetProperty("id").GetString()!] = mod.Clone();
+        syncingRows = true;
+        try { foreach (ListViewItem entry in list.Items) {
+            var row = (Row)entry.Tag;
+            var toggle = ((Grid)entry.Content).Children.OfType<ToggleSwitch>().FirstOrDefault();
+            if (toggle == null) continue;
+            var active = Runtime(row)?.GetProperty("state").GetString() == "enabled";
+            if (toggle.IsOn != active) toggle.IsOn = active;
+        } } finally { syncingRows = false; }
     }
 
     private static Grid ColumnRow(string name, string version, string usage, string state)
@@ -171,13 +187,13 @@ internal sealed class ModManagementView : StackPanel
     }
     private void Failure(Exception error)
     {
-        status.Title = "操作未完成"; status.Severity = InfoBarSeverity.Error;
+        status.IsOpen = true; status.Title = "操作未完成"; status.Severity = InfoBarSeverity.Error;
         status.Message = error is TimeoutException ? "结果尚未确认。请刷新状态，不要重复提交操作。" : error.Message.Split('\n')[0];
     }
     private async Task<T> RunAsync<T>(Func<RuntimeConnection, Task<T>> action)
     {
         if (busy) throw new InvalidOperationException("正在处理，请稍候。");
-        busy = true; Update();
+        busy = true; status.IsOpen = false; Update();
         RuntimeConnection? service = null;
         try {
             var explicitEndpoint = Environment.GetEnvironmentVariable("BLUEMILK_SERVER_URL");
@@ -243,7 +259,7 @@ internal sealed class ModManagementView : StackPanel
             var item = versions[0];
             var manifest = item.GetProperty("manifest");
             var usage = string.Join(" / ", manifest.GetProperty("presentations").EnumerateArray()
-                .Select(x => x.GetString() == "desktop" ? "客户端使用" : "CLI 使用"));
+                .Select(x => x.GetString() == "desktop" ? "客户端" : "CLI"));
             var row = new Row(manifest.GetProperty("id").GetString()!, item.GetProperty("sha256").GetString()!,
                 manifest.GetProperty("name").GetString()!, manifest.GetProperty("version").GetString()!, usage);
             var startupText = startupSelections.TryGetProperty(row.Id, out var saved) && saved.GetProperty("sha256").GetString() == row.Hash
@@ -251,6 +267,21 @@ internal sealed class ModManagementView : StackPanel
             var entry = new ListViewItem { Content = ColumnRow(row.Name, row.Version, row.Usage,
                 StateName(Runtime(row)?.GetProperty("state").GetString()) + startupText), Tag = row, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             var columns = (Grid)entry.Content;
+            columns.Children.RemoveAt(3);
+            var toggle = new ToggleSwitch { OnContent = "", OffContent = "", MinWidth = 44,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                IsOn = Runtime(row)?.GetProperty("state").GetString() == "enabled", IsEnabled = gameConnected };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, row.Name + " 启用");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, "mod-toggle-" + row.Id);
+            ToolTipService.SetToolTip(toggle, StateName(Runtime(row)?.GetProperty("state").GetString()));
+            Grid.SetColumn(toggle, 3); columns.Children.Add(toggle);
+            toggle.Toggled += async (_, _) => {
+                if (syncingRows || busy) return;
+                list.SelectedItem = entry;
+                try { if (toggle.IsOn) await EnableSelectedAsync(); else await ChangeAsync("mods-disable"); }
+                catch { syncingRows = true; toggle.IsOn = Runtime(row)?.GetProperty("state").GetString() == "enabled"; syncingRows = false; }
+            };
+
             var label = columns.Children[0]; columns.Children.RemoveAt(0);
             var nameCell = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             var icon = ModIcon.Create(item); icon.Width = icon.Height = 20;

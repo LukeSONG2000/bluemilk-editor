@@ -4,6 +4,7 @@ param(
     [string]$MakeAppx
 )
 $ErrorActionPreference = 'Stop'
+throw 'MSIX distribution is retired. Use build-installer.ps1 to produce the EXE installer.'
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 [xml]$versions = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'Version.props')

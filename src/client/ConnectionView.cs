@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -16,7 +16,7 @@ internal sealed class ConnectionView : StackPanel
     private DateTime retryAfter;
     private int? gamePid;
     private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "未连接",
-        Message = "请先启动并登录 SWGoH，工具会自动识别游戏路径。" };
+        Message = "等待游戏启动" };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
     internal bool HasWorker => runtime != null;
     internal bool IsSharedConnection => runtime?.IsShared == true;
@@ -30,13 +30,25 @@ internal sealed class ConnectionView : StackPanel
     internal event Action<JsonElement>? RuntimeModsChanged;
     internal event Action<JsonElement>? SnapshotChanged;
 
-    public ConnectionView()
+    public ConnectionView(Func<nint>? windowHandle = null)
     {
-        Spacing = 16; Padding = new Thickness(32); MaxWidth = 760;
-        HorizontalAlignment = HorizontalAlignment.Left;
-        Children.Add(new TextBlock { Text = "游戏连接", FontSize = 28 });
-        Children.Add(new TextBlock { Text = "启动后自动连接游戏；连接中断时自动恢复。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(status); Children.Add(detail);
+        Spacing = 12; Padding = new Thickness(0);
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        var launch = new Button { Content = "启动游戏", MinWidth = 120 };
+        var gameStatus = new TextBlock { Text = "SWGoH", FontSize = 20, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        Children.Add(FluentSurface.Row(gameStatus, launch));
+        launch.Click += async (_, _) => {
+            launch.IsEnabled = false;
+            try { await GameLauncher.LaunchAsync(windowHandle?.Invoke() ?? 0); }
+            catch (Exception e) { Failure(e); }
+            finally { launch.IsEnabled = true; }
+        };
+        StateChanged += () => {
+            launch.Content = GameLauncher.IsRunning ? "打开游戏" : "启动游戏";
+            gameStatus.Text = GameLauncher.IsRunning ? "SWGoH · 运行中" : "SWGoH · 未启动";
+        };
+        GameLauncher.RememberRunning();
+        Children.Add(status);
         autoTimer.Tick += async (_, _) => await AutoTickAsync();
     }
 
