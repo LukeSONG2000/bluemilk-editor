@@ -87,7 +87,8 @@ globalThis.installBattleInfo=()=>{
   const hp=deriveHealthColor?nativeColor(call('UnitHealthBar','GetHealthColor',healthComponent,[A.value('f32',read('MaxHP')>0?read('CurrentHP')/read('MaxHP'):0)])):barColor(bars.health),full=nativeColor(call('UnitHealthBar','GetHealthColor',healthComponent,[A.value('f32',1)]));
   const shield=barColor(bars.shield),bonus=barColor(bars.bonus);
   const healthLine='['+hp+']'+read('CurrentHP')+'[-]/['+full+']'+read('MaxHP')+'[-]';
-  const shieldLine='['+bonus+']'+read('CurrentBonusShield')+'/'+read('MaxBonusShield')+'[-]    '+
+  const bonusCurrent=read('CurrentBonusShield');
+  const shieldLine=(bonusCurrent===0?'':'['+bonus+']'+bonusCurrent+'/'+read('MaxBonusShield')+'[-]    ')+
    '['+shield+']'+read('CurrentPermanentShield')+'/'+read('MaxPermanentShield')+'[-]';
   // Popup bars place protection above health; the target HUD does the reverse.
   return (shieldAbove?[shieldLine,healthLine]:[healthLine,shieldLine]).join('\n');
@@ -102,11 +103,9 @@ globalThis.installBattleInfo=()=>{
  }
  function layoutTarget(item){
   const name=R.readRef(item.target,'_nameLabel'),parent=S.parent(S.transform(name));
-  const component=R.readRef(item.view,'_opponentAbilitiesComponent');
-  const controls=[name];
-  if(!component.isNull())for(const field of ['_abilityButtonGrid','_leaderAndUniqueIconsGrid']){
-   const control=R.readRef(component,field);if(!control.isNull())controls.push(control);
-  }
+  // Anchor to the bars, not the ability grids below them: extra abilities must
+  // not push these numbers away from the health/protection display.
+  const controls=[R.readRef(item.target,'_healthBar'),R.readRef(item.target,'_shieldBar')];
   const bounds=control=>{
    const box=call('NGUIMath','CalculateRelativeWidgetBounds',R.nil,[A.ref(parent),A.ref(S.transform(control))],['UnityEngine.Transform','UnityEngine.Transform']);
    const p=R.api('object_unbox','pointer',['pointer'])(box);
@@ -125,12 +124,13 @@ globalThis.installBattleInfo=()=>{
   const position=S.vector(S.transform(name),'localPosition');
   const health=widgetBounds(parent,R.readRef(item.target,'_healthBar')),shield=widgetBounds(parent,R.readRef(item.target,'_shieldBar'));
   const center=(health.y+shield.y)/2;
-  setVector(S.transform(item.label),'localPosition',[left-16,center,position[2]]);
+  const gap=8;
+  setVector(S.transform(item.label),'localPosition',[left-gap,center,position[2]]);
   // A cloned label can carry scaling/geometry offsets. Correct its actual
   // right edge rather than treating the Transform origin as the edge.
-  const actual=bounds(item.label),delta=left-16-actual.right;
-  if(Number.isFinite(delta))setVector(S.transform(item.label),'localPosition',[left-16+delta,center,position[2]]);
-  stats.targetLayout={controlsLeft:left,label:bounds(item.label),gap:16,measured};
+  const actual=bounds(item.label),delta=left-gap-actual.right;
+  if(Number.isFinite(delta))setVector(S.transform(item.label),'localPosition',[left-gap+delta,center,position[2]]);
+  stats.targetLayout={controlsLeft:left,label:bounds(item.label),gap,measured};
  }
  function refreshShipTarget(view){
   const key=view.toString(),portrait=R.readRef(view,'_opponentPortraitContainer');
