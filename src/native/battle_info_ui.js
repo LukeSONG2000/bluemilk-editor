@@ -127,7 +127,7 @@ globalThis.installBattleInfo=()=>{
   const position=S.vector(S.transform(name),'localPosition');
   const health=widgetBounds(parent,R.readRef(item.target,'_healthBar')),shield=widgetBounds(parent,R.readRef(item.target,'_shieldBar'));
   const center=(health.y+shield.y)/2;
-  const gap=8;
+  const gap=16;
   setVector(S.transform(item.label),'localPosition',[left-gap,center,position[2]]);
   // A cloned label can carry scaling/geometry offsets. Correct its actual
   // right edge rather than treating the Transform origin as the edge.

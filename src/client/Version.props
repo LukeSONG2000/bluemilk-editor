@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
-    <Version>0.1.13</Version>
-    <AssemblyVersion>0.1.13.0</AssemblyVersion>
-    <FileVersion>0.1.13.0</FileVersion>
-    <BlueMilkPackageVersion>0.1.13.0</BlueMilkPackageVersion>
+    <Version>0.1.14</Version>
+    <AssemblyVersion>0.1.14.0</AssemblyVersion>
+    <FileVersion>0.1.14.0</FileVersion>
+    <BlueMilkPackageVersion>0.1.14.0</BlueMilkPackageVersion>
     <RepositoryUrl>https://github.com/LukeSONG2000/bluemilk-editor</RepositoryUrl>
   </PropertyGroup>
 </Project>
