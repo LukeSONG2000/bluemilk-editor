@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -11,13 +11,10 @@ internal sealed class ConnectionView : StackPanel
     private bool connected;
     private bool disconnectRequested;
     private readonly DispatcherTimer autoTimer = new() { Interval = TimeSpan.FromSeconds(5) };
-    private readonly ToggleSwitch automatic = new() { Header = "自动连接与恢复", IsOn = true };
+    private bool autoAllowed = true;
     private bool autoTick, stopping;
     private DateTime retryAfter;
     private int? gamePid;
-    private readonly Button connect = new() { Content = "连接游戏" };
-    private readonly Button refresh = new() { Content = "刷新场景", IsEnabled = false };
-    private readonly Button disconnect = new() { Content = "断开并恢复", IsEnabled = false };
     private readonly InfoBar status = new() { IsOpen = true, IsClosable = false, Title = "未连接",
         Message = "请先启动并登录 SWGoH，工具会自动识别游戏路径。" };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
@@ -37,12 +34,8 @@ internal sealed class ConnectionView : StackPanel
         Spacing = 16; Padding = new Thickness(32); MaxWidth = 760;
         HorizontalAlignment = HorizontalAlignment.Left;
         Children.Add(new TextBlock { Text = "游戏连接", FontSize = 28 });
-        Children.Add(new TextBlock { Text = "连接后读取当前游戏场景；战斗助手提供信息拓展和目标属性。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(status); Children.Add(automatic); Children.Add(connect); Children.Add(refresh); Children.Add(disconnect); Children.Add(detail);
-        connect.Click += async (_, _) => { try { await ConnectAsync(); } catch { } };
-        refresh.Click += async (_, _) => { try { await RefreshAsync(); } catch { } };
-        disconnect.Click += async (_, _) => { automatic.IsOn = false; try { await DisconnectAsync(); } catch { } };
-        automatic.Toggled += (_, _) => { retryAfter = DateTime.MinValue; };
+        Children.Add(new TextBlock { Text = "启动后自动连接游戏；连接中断时自动恢复。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(status); Children.Add(detail);
         autoTimer.Tick += async (_, _) => await AutoTickAsync();
     }
 
@@ -56,7 +49,7 @@ internal sealed class ConnectionView : StackPanel
     }
     private async Task AutoTickAsync()
     {
-        if (stopping || !automatic.IsOn || autoTick || busy || disconnectRequested || DateTime.UtcNow < retryAfter) return;
+        if (stopping || !autoAllowed || autoTick || busy || disconnectRequested || DateTime.UtcNow < retryAfter) return;
         autoTick = true;
         try {
             if (runtime != null && connected) {
@@ -71,11 +64,11 @@ internal sealed class ConnectionView : StackPanel
                 } else await ConnectAsync();
             }
         } catch (TimeoutException) {
-            automatic.IsOn = false;
-            status.Message = "请求结果尚未确认，自动连接已暂停。请使用断开并恢复处理。";
+            autoAllowed = false;
+            status.Message = "请求结果尚未确认，自动连接已暂停。请关闭并重新打开客户端以重新核对状态。";
         } catch (Exception) {
             // Only a failed read or rejected connection is retried. Do not replay Mod commands.
-            if (automatic.IsOn && runtime?.IsShared == true && !connected) {
+            if (autoAllowed && runtime?.IsShared == true && !connected) {
                 await runtime.DetachAsync(); runtime = null; Buttons();
             }
             retryAfter = DateTime.UtcNow.AddSeconds(15);
@@ -84,16 +77,13 @@ internal sealed class ConnectionView : StackPanel
 
     private void Buttons()
     {
-        connect.IsEnabled = !busy && !disconnectRequested && runtime == null;
-        refresh.IsEnabled = CanRefresh;
-        disconnect.IsEnabled = !busy && !disconnectRequested && runtime != null;
         StateChanged?.Invoke();
     }
 
     private void Failure(Exception error)
     {
         status.Title = "操作未完成"; status.Message = error is TimeoutException
-            ? "等待运行组件超时，结果尚未确认。请使用“断开并恢复”，不要重复连接。" : error.Message.Split('\n')[0];
+            ? "等待运行组件超时，结果尚未确认。请关闭并重新打开客户端以核对状态。" : error.Message.Split('\n')[0];
         status.Severity = InfoBarSeverity.Error;
     }
 
@@ -141,15 +131,46 @@ internal sealed class ConnectionView : StackPanel
                     status.Message = "游戏已连接；信息拓展未启用。请在 Mod 管理中安装、载入并启用 BlueMilk Pro。";
                 }
             }
+            await ReadInformationStateAsync();
             return result;
         }
         catch (Exception error) {
             connected = false;
             if (error is RemoteCommandException && runtime?.IsShared == true) { await runtime.DetachAsync(); runtime = null; }
-            else if (runtime != null) automatic.IsOn = false;
+            else if (runtime != null) autoAllowed = false;
             Failure(error); throw;
         }
         finally { busy = false; Buttons(); }
+    }
+
+    private async Task ReadInformationStateAsync()
+    {
+        if (runtime == null || IsPreparedTrial || IsTrialObserver) return;
+        var state = await runtime.RequestAsync("mods-list");
+        InformationEnabled = state.GetProperty("mods").EnumerateArray().Any(m =>
+            m.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro" && m.GetProperty("state").GetString() == "enabled");
+    }
+
+    internal async Task SetInformationAsync(bool enabled)
+    {
+        if (!CanRefresh || runtime == null || IsPreparedTrial || IsTrialObserver)
+            throw new InvalidOperationException("正在连接或同步游戏，请稍后重试。");
+        busy = true; Buttons();
+        try {
+            var state = await runtime.RequestAsync("mods-list");
+            var mod = state.GetProperty("mods").EnumerateArray().FirstOrDefault(m => m.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro");
+            if (enabled && mod.ValueKind == JsonValueKind.Undefined) {
+                var packages = await runtime.RequestAsync("mods-package-list");
+                var package = packages.GetProperty("packages").EnumerateArray()
+                    .Where(p => p.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro")
+                    .OrderByDescending(p => Version.Parse(p.GetProperty("manifest").GetProperty("version").GetString()!)).FirstOrDefault();
+                if (package.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("请先在 Mod 管理中添加 BlueMilk Pro 包。");
+                await runtime.RequestAsync("mods-package-register", new { sha256 = package.GetProperty("sha256").GetString() });
+            }
+            if (enabled || mod.ValueKind != JsonValueKind.Undefined)
+                await runtime.RequestAsync(enabled ? "mods-enable" : "mods-disable", new { id = "bluemilk.pro" });
+            await ReadInformationStateAsync();
+        } finally { busy = false; Buttons(); }
     }
 
     internal async Task<JsonElement> PrepareTrialAsync(object payload)
@@ -206,7 +227,9 @@ internal sealed class ConnectionView : StackPanel
         try
         {
             var result = await runtime.RequestAsync("snapshot");
-            ShowSnapshot(result); return result;
+            ShowSnapshot(result);
+            if (!IsPreparedTrial && !IsTrialObserver) await ReadInformationStateAsync();
+            return result;
         }
         catch (Exception error) { Failure(error); connected = false; throw; }
         finally { busy = false; Buttons(); }
@@ -262,7 +285,7 @@ internal sealed class ConnectionView : StackPanel
         status.Title = "已连接"; status.Message = $"当前场景：{label}"; status.Severity = InfoBarSeverity.Success;
         detail.Text = IsPreparedTrial ? "共享试玩会话由服务持有；关闭窗口保留试玩。“停止”或“断开并恢复”会等待恢复酒馆，并影响所有已连接入口。"
             : IsTrialObserver ? "仅读取已有私人试玩，不另行注入。"
-            : runtime?.IsShared == true ? "已连接共享服务。关闭窗口保留服务与 Mod；“断开并恢复”会断开所有入口共用的游戏会话。"
+            : runtime?.IsShared == true ? "自动连接正常。关闭客户端保留共享服务与 Mod，重新打开时自动恢复连接。"
             : InformationEnabled ? "本次连接已启用游戏内信息拓展。敌方控制可在战斗助手中单独配置。" : "已连接共享运行时；Mod 管理页显示当前状态与下次连接的启动选择。";
         SnapshotChanged?.Invoke(snapshot);
     }

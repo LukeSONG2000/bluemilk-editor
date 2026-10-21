@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json;
 
@@ -7,7 +7,9 @@ namespace Swgoh.Client;
 internal sealed class BattleInformationView : StackPanel
 {
     private readonly ConnectionView connection;
-    private readonly ToggleSwitch information = new() { Header = "游戏内信息拓展", OffContent = "关闭", OnContent = "连接时启用" };
+    private bool syncingInformation, changingInformation;
+    private readonly InfoBar informationStatus = new() { IsOpen = false, IsClosable = false };
+    private readonly ToggleSwitch information = new() { Header = "游戏内信息拓展", OffContent = "关闭", OnContent = "已启用" };
     private readonly TextBlock connectionHint = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock unit = new() { Text = "等待选中单位", FontSize = 20 };
     private readonly TextBlock pools = new() { TextWrapping = TextWrapping.Wrap };
@@ -29,7 +31,8 @@ internal sealed class BattleInformationView : StackPanel
         names = File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file))! : new();
         Children.Add(new TextBlock { Text = title, FontSize = 28 });
         Children.Add(information);
-        Children.Add(new TextBlock { Text = "需先手动安装 BlueMilk Pro 并在启动设置中选择。游戏内显示血盾数字、敌方技能 CD 和有限状态回合数。", TextWrapping = TextWrapping.Wrap });
+        Children.Add(informationStatus);
+        Children.Add(new TextBlock { Text = "安装 BlueMilk Pro 后即可在连接状态下实时启停。游戏内显示血盾数字、敌方技能 CD 和有限状态回合数。", TextWrapping = TextWrapping.Wrap });
         Children.Add(connectionHint);
         var attributes = new StackPanel { Spacing = 12 };
         attributes.Children.Add(unit); attributes.Children.Add(pools); attributes.Children.Add(mastery);
@@ -40,7 +43,17 @@ internal sealed class BattleInformationView : StackPanel
         Sections.Items.Add(new PivotItem { Header = "实时属性", Content = attributes });
         if (includeController) Sections.Items.Add(new PivotItem { Header = "敌方控制", Content = Controller });
         Children.Add(Sections);
-        information.Toggled += (_, _) => connection.InformationEnabled = information.IsOn;
+        information.Toggled += async (_, _) => {
+            if (syncingInformation || changingInformation) return;
+            changingInformation = true; informationStatus.IsOpen = false;
+            var requested = information.IsOn;
+            UpdateState();
+            try { await connection.SetInformationAsync(requested); }
+            catch (Exception error) {
+                informationStatus.Title = "信息拓展未切换"; informationStatus.Message = error.Message.Split('\n')[0];
+                informationStatus.Severity = InfoBarSeverity.Error; informationStatus.IsOpen = true;
+            } finally { changingInformation = false; UpdateState(); }
+        };
         connection.StateChanged += UpdateState;
         connection.SnapshotChanged += Render;
         timer.Tick += async (_, _) =>
@@ -55,11 +68,12 @@ internal sealed class BattleInformationView : StackPanel
 
     private void UpdateState()
     {
-        if (information.IsOn != connection.InformationEnabled) information.IsOn = connection.InformationEnabled;
-        information.IsEnabled = !connection.HasWorker;
+        syncingInformation = true;
+        try { information.IsOn = connection.InformationEnabled; } finally { syncingInformation = false; }
+        information.IsEnabled = connection.CanRefresh && !changingInformation && !connection.IsPreparedTrial && !connection.IsTrialObserver;
         connectionHint.Text = connection.IsTrialObserver
             ? "正在观察私人试玩；游戏内信息拓展由试玩宿主管理。"
-            : connection.IsConnected ? "已连接，页面可见时每秒刷新选中单位。" : "请在概览连接游戏。";
+            : connection.IsConnected ? "已连接，页面可见时每秒刷新选中单位。" : "等待自动连接游戏。";
         if (!connection.IsConnected) Render(default);
     }
 
