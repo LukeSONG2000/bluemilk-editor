@@ -239,11 +239,7 @@ internal sealed class ModManagementView : StackPanel
             var versions = packages.GetProperty("packages").EnumerateArray()
                 .Where(x => x.GetProperty("manifest").GetProperty("id").GetString() == id)
                 .OrderByDescending(x => x.GetProperty("manifest").GetProperty("version").GetString(), Comparer<string?>.Create((a,b) => CompareVersion(a!,b!))).ToArray();
-            if (versions.Length == 0) {
-                var missing = new Row(id, "", id == "bluemilk.pro" ? "BlueMilk Pro" : "BlueMilk Ultra", "—", "客户端 / CLI");
-                list.Items.Add(new ListViewItem { Content = ColumnRow(missing.Name, missing.Version, missing.Usage, "未安装"), Tag = missing, HorizontalContentAlignment = HorizontalAlignment.Stretch });
-                continue;
-            }
+            if (versions.Length == 0) continue;
             var item = versions[0];
             var manifest = item.GetProperty("manifest");
             var usage = string.Join(" / ", manifest.GetProperty("presentations").EnumerateArray()
