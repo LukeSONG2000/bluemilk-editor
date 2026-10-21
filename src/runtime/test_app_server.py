@@ -4,6 +4,7 @@ import secrets
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
@@ -162,6 +163,92 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                                          'params': {'instance': self.server.instance}}))
             self.assertIn('error', json.loads(await client.recv()))
             self.assertIn('result', await self.call(client, 'still-alive', 'capabilities'))
+
+    async def update_stop(self, client, instance=None):
+        await client.send(json.dumps({'jsonrpc': '2.0', 'id': 'update-stop',
+                                     'method': 'server.shutdownForUpdate',
+                                     'params': {'instance': instance or self.server.instance}}))
+        return json.loads(await client.recv())
+
+    def idle_runtime(self):
+        self.runtime.session = self.runtime.script = None
+
+    async def test_update_shutdown_idle_single_frontend(self):
+        self.idle_runtime()
+        async with self.client() as client:
+            self.assertTrue((await self.update_stop(client))['result']['stopped'])
+        await asyncio.wait_for(self.server.wait_closed(), 2)
+        self.runtime.disconnect.assert_called_once()
+
+    async def test_update_refuses_other_frontends_without_cleanup(self):
+        self.idle_runtime()
+        async with self.client() as desktop, self.client() as cli:
+            self.assertEqual((await self.update_stop(desktop))['error']['code'], -32020)
+            self.assertIn('result', await self.call(cli, 'still-owned'))
+            self.runtime.disconnect.assert_not_called()
+        async with self.client() as sole:
+            self.assertTrue((await self.update_stop(sole))['result']['stopped'])
+
+    async def test_update_refuses_all_retained_ownership(self):
+        self.idle_runtime()
+        async with self.client() as client:
+            for owner, field, retained in (
+                    (self.server, 'game_pid', 123),
+                    (self.runtime, 'session', object()),
+                    (self.runtime, 'script', object()),
+                    (self.server.session.trials, 'service', object())):
+                with self.subTest(field=field):
+                    setattr(owner, field, retained)
+                    try:
+                        self.assertEqual((await self.update_stop(client))['error']['code'], -32021)
+                        self.runtime.disconnect.assert_not_called()
+                    finally:
+                        setattr(owner, field, None)
+            self.assertTrue((await self.update_stop(client))['result']['stopped'])
+
+    async def test_update_cleanup_failure_allows_explicit_recovery(self):
+        self.idle_runtime()
+        self.runtime.disconnect.side_effect = RuntimeError('incomplete')
+        async with self.client() as client:
+            self.assertIn('error', await self.update_stop(client))
+            self.assertFalse(self.server._updating)
+            self.assertFalse(self.server._stopped)
+            self.runtime.disconnect.side_effect = None
+            async with self.client() as other:
+                self.assertIn('result', await self.call(other, 'recovered'))
+            self.assertTrue((await self.update_stop(client))['result']['stopped'])
+
+    async def test_update_reserves_admission_during_cleanup(self):
+        self.idle_runtime()
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_cleanup():
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test cleanup timeout')
+            return {'disconnected': True}
+
+        self.runtime.disconnect.side_effect = slow_cleanup
+        async with self.client() as client:
+            task = asyncio.create_task(self.update_stop(client))
+            try:
+                self.assertTrue(await asyncio.to_thread(entered.wait, 2))
+                with self.assertRaises(InvalidStatus) as rejected:
+                    async with self.client():
+                        self.fail('new frontend entered reserved update')
+                self.assertEqual(rejected.exception.response.status_code, 503)
+            finally:
+                release.set()
+            self.assertTrue((await task)['result']['stopped'])
+
+    async def test_update_stale_identity_and_transportless_calls_rejected(self):
+        self.idle_runtime()
+        async with self.client() as client:
+            self.assertEqual((await self.update_stop(client, 'old'))['error']['code'], -32602)
+            result = await self.server.dispatch(json.dumps({'jsonrpc': '2.0', 'id': 'no-client',
+                'method': 'server.shutdownForUpdate', 'params': {'instance': self.server.instance}}))
+            self.assertEqual(result['error']['code'], -32020)
+            self.runtime.disconnect.assert_not_called()
 
 
 if __name__ == '__main__':

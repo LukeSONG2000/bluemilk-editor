@@ -303,6 +303,26 @@ and `trial-stop` restore it for every frontend. Server shutdown also waits for
 cleanup; failure leaves the service available and ownership intact. Stop is
 separate from frontend detach, including the offline preparation form.
 
+### Update shutdown preflight (transport only)
+
+Servers advertising `server.info.updateShutdownSupported == true` accept
+`server.shutdownForUpdate` with `params: {"instance": "<current instance>"}`.
+Unlike explicit `server.shutdown`, this operation refuses to interrupt a game
+session. It requires the requesting WebSocket to be the only connected frontend,
+no retained normal session/script, no game PID, and no prepared-service ownership
+(including failed starts awaiting cleanup). Other frontends return error `-32020`;
+retained game ownership returns `-32021`. Neither refusal performs cleanup.
+
+The check and reservation share the runtime command lock. Once reserved, new
+connections are refused while idle shutdown completes. Cleanup failure releases
+the reservation and keeps the server available for recovery. A successful reply
+is `{ "stopped": true, "reason": "update" }`; the installer must additionally
+wait for the host process to exit. This does not authorize killing any process.
+Old servers without this capability must not fall back to unconditional shutdown.
+This is the transport prerequisite only: the client install/restart coordinator,
+exclusive update lease across host launches, and actual in-app upgrade acceptance
+are still pending. A shutdown receipt alone does not prove installation succeeded.
+
 After the original engine completes, snapshot reports `PreparedTrialComplete`
 with the cleanup receipt; this is a lifecycle state, not a synthetic live game
 snapshot. Explicit stop releases the remaining script/session. A later explicit

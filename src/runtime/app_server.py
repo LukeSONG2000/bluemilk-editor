@@ -23,6 +23,8 @@ class AppServer:
         self._responses = {}
         self._server = None
         self._stopped = False
+        self._updating = False
+        self._clients = set()
         self.uri = None
         self.game_pid = None
 
@@ -33,6 +35,8 @@ class AppServer:
             return connection.respond(HTTPStatus.UNAUTHORIZED, 'Authorization required\n')
         if request.headers.get_all('Origin'):
             return connection.respond(HTTPStatus.FORBIDDEN, 'Browser origins are not enabled\n')
+        if self._updating or self._stopped:
+            return connection.respond(HTTPStatus.SERVICE_UNAVAILABLE, 'Server is closing\n')
 
     async def start(self, port=0):
         if self._server is not None or self._stopped:
@@ -49,9 +53,14 @@ class AppServer:
         return {'jsonrpc': '2.0', 'id': request_id, 'error': {'code': code, 'message': message}}
 
     async def _handle(self, websocket):
+        # A handshake may have begun before update shutdown reserved the server.
+        if self._updating or self._stopped:
+            await websocket.close(code=1012, reason='Server is closing')
+            return
+        self._clients.add(websocket)
         try:
             async for message in websocket:
-                reply = await self.dispatch(message)
+                reply = await self.dispatch(message, websocket)
                 await websocket.send(json.dumps(reply, ensure_ascii=False))
                 if self._stopped:
                     self._server.close()
@@ -60,10 +69,11 @@ class AppServer:
             # A dropped frontend must not disconnect another frontend's runtime.
             pass
         finally:
+            self._clients.discard(websocket)
             if self._stopped:
                 self._server.close()
 
-    async def dispatch(self, message):
+    async def dispatch(self, message, client=None):
         request_id = None
         try:
             if not isinstance(message, str) or len(message.encode('utf8')) > 16384:
@@ -85,8 +95,31 @@ class AppServer:
                     'hostPid': os.getpid(), 'gamePid': self.game_pid,
                     'sessionMode': 'prepared' if self.session.trials.owns_session else ('normal' if self.game_pid is not None else 'idle'),
                     'sharedRuntime': True, 'remoteEnabled': False,
+                    'updateShutdownSupported': True,
                     'disconnectPolicy': 'Frontend disconnect retains shared runtime',
                     'retryPolicy': 'Never replay against a different server instance'}}
+            if request.get('method') == 'server.shutdownForUpdate':
+                if request.get('params') != {'instance': self.instance}:
+                    return self.error(request_id, -32602, 'Current server instance required')
+                async with self._gate:
+                    if self._stopped or self._updating:
+                        return self.error(request_id, -32000, 'Server is closing')
+                    if client is None or self._clients != {client}:
+                        return self.error(request_id, -32020, 'Other frontends are connected; update postponed')
+                    # Check retained native ownership, not only the successful connect receipt:
+                    # failed/partial connects and prepared starts must block updates too.
+                    if (self.game_pid is not None or self.session.trials.owns_session or
+                            getattr(self.session.native_runtime, 'session', True) is not None or
+                            getattr(self.session.native_runtime, 'script', True) is not None):
+                        return self.error(request_id, -32021, 'Game session retained; restore it before updating')
+                    self._updating = True
+                    try:
+                        await asyncio.to_thread(self.session.close)
+                        self._stopped = True
+                    finally:
+                        if not self._stopped:
+                            self._updating = False
+                return {'jsonrpc': '2.0', 'id': request_id, 'result': {'stopped': True, 'reason': 'update'}}
             if request.get('method') == 'server.shutdown':
                 if request.get('params') != {'instance': self.instance}:
                     return self.error(request_id, -32602, 'Current server instance required')
