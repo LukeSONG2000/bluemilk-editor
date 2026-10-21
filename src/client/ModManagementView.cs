@@ -105,6 +105,7 @@ internal sealed class ModManagementView : StackPanel
         var manifest = inspected.GetProperty("manifest");
         var id = manifest.GetProperty("id").GetString()!;
         var version = manifest.GetProperty("version").GetString()!;
+        if (id is not ("bluemilk.pro" or "bluemilk.ultra")) throw new InvalidOperationException("当前开发版仅展示 BlueMilk Pro 和 BlueMilk Ultra，请使用对应的包。其他包仍可通过 CLI 管理。");
         if (expectedId != null && id != expectedId) throw new InvalidOperationException("更新包不属于所选 Mod。");
         if (previousVersion != null && CompareVersion(version, previousVersion) <= 0) throw new InvalidOperationException("请选择版本号更高的更新包。");
         var sha256 = inspected.GetProperty("sha256").GetString();
@@ -153,16 +154,17 @@ internal sealed class ModManagementView : StackPanel
         choose.IsEnabled = refresh.IsEnabled = !busy; list.IsEnabled = !busy;
         install.IsEnabled = !busy && inspectedHash != null;
         var row = Selected;
+        var installed = row != null && row.Hash.Length > 0;
         var native = row == null ? null : Runtime(row);
         var state = native?.GetProperty("state").GetString();
-        load.IsEnabled = !busy && gameConnected && row != null && native == null;
-        enable.IsEnabled = !busy && gameConnected && row != null && (native == null || state == "disabled");
+        load.IsEnabled = !busy && gameConnected && installed && native == null;
+        enable.IsEnabled = !busy && gameConnected && installed && (native == null || state == "disabled");
         disable.IsEnabled = !busy && gameConnected && native != null && state != "disabled";
-        uninstall.IsEnabled = !busy && row != null;
-        configure.IsEnabled = update.IsEnabled = !busy && row != null;
-        startup.IsEnabled = !busy && row != null;
+        uninstall.IsEnabled = !busy && installed;
+        configure.IsEnabled = update.IsEnabled = !busy && installed;
+        startup.IsEnabled = !busy && installed;
         detail.Text = row == null ? "选择一个 Mod 查看状态。" :
-            $"{row.Name}  {row.Version}\n{row.Usage} · {StateName(state)}" +
+            $"{row.Name}  {row.Version}\n{row.Usage} · {(installed ? StateName(state) : "未安装")}" +
             (native?.TryGetProperty("error", out var error) == true && error.ValueKind == JsonValueKind.String
                 ? "\n" + error.GetString() : "");
     }
@@ -232,7 +234,16 @@ internal sealed class ModManagementView : StackPanel
                 runtimeMods[mod.GetProperty("manifest").GetProperty("id").GetString()!] = mod.Clone();
         }
         list.Items.Clear();
-        foreach (var item in packages.GetProperty("packages").EnumerateArray()) {
+        foreach (var id in new[] { "bluemilk.pro", "bluemilk.ultra" }) {
+            var versions = packages.GetProperty("packages").EnumerateArray()
+                .Where(x => x.GetProperty("manifest").GetProperty("id").GetString() == id)
+                .OrderByDescending(x => x.GetProperty("manifest").GetProperty("version").GetString(), Comparer<string?>.Create((a,b) => CompareVersion(a!,b!))).ToArray();
+            if (versions.Length == 0) {
+                var missing = new Row(id, "", id == "bluemilk.pro" ? "BlueMilk Pro" : "BlueMilk Ultra", "—", "客户端 / CLI");
+                list.Items.Add(new ListViewItem { Content = ColumnRow(missing.Name, missing.Version, missing.Usage, "未安装"), Tag = missing, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                continue;
+            }
+            var item = versions[0];
             var manifest = item.GetProperty("manifest");
             var usage = string.Join(" / ", manifest.GetProperty("presentations").EnumerateArray()
                 .Select(x => x.GetString() == "desktop" ? "客户端使用" : "CLI 使用"));
@@ -253,6 +264,7 @@ internal sealed class ModManagementView : StackPanel
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        if (row.Hash.Length == 0) throw new InvalidOperationException("请先安装此 Mod。");
         if (!gameConnected && operation != "mods-package-uninstall") throw new InvalidOperationException("请先在概览中连接游戏。");
         if (operation is not ("mods-package-register" or "mods-enable" or "mods-disable" or "mods-package-uninstall"))
             throw new ArgumentException("不支持的 Mod 操作。");

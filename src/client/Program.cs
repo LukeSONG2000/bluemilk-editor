@@ -70,7 +70,6 @@ public sealed partial class ShellApplication : Application
         modsView.SizeChanged += (_, args) => mods.Width = Math.Max(0, args.NewSize.Width);
         var battleItem = new NavigationViewItem { Content = "战斗助手" };
         navigation.MenuItems.Add(new NavigationViewItemSeparator());
-        var packageItems = new Dictionary<string, NavigationViewItem>();
         var packagePages = new Dictionary<string, FrameworkElement>();
         var battle = new BattleInformationView(content, () =>
             (ReferenceEquals(navigation.SelectedItem, battleItem) || (navigation.SelectedItem as NavigationViewItem)?.Tag as string == "bluemilk.pro") && window.AppWindow.IsVisible &&
@@ -81,29 +80,27 @@ public sealed partial class ShellApplication : Application
 
         var trial = new TrialCaptureView(content, () => WinRT.Interop.WindowNative.GetWindowHandle(window));
         var trialView = new ScrollViewer { Content = trial };
+        var proItem = new NavigationViewItem { Content = "BlueMilk Pro", Tag = "bluemilk.pro", Icon = new SymbolIcon(Symbol.Document) };
+        var ultraItem = new NavigationViewItem { Content = "BlueMilk Ultra", Tag = "bluemilk.ultra", Icon = new SymbolIcon(Symbol.Document) };
+        navigation.MenuItems.Add(proItem); navigation.MenuItems.Add(ultraItem);
+        packagePages["bluemilk.pro"] = battleView;
+        var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
+        ultraPage.Children.Add(new TextBlock { Text = "BlueMilk Ultra", FontSize = 28 });
+        var ultraStatus = new InfoBar { IsOpen = true, IsClosable = false, Title = "开发中 · 未安装", Message = "现有玩法扩展正在迁入 Ultra，尚未发布可安装包。" };
+        ultraPage.Children.Add(ultraStatus);
+        foreach (var feature in new[] {
+            ("敌方控制", "仅普攻、一键嘲讽、指定攻击目标与敌方手动操作。"),
+            ("提前试玩", "在隔离环境体验战斗，不消耗正式资源。"),
+            ("自定义战斗", "自定义双方阵容与战斗配置。") }) {
+            ultraPage.Children.Add(new Expander { Header = feature.Item1, HorizontalAlignment = HorizontalAlignment.Stretch,
+                Content = new TextBlock { Text = feature.Item2 + "\n待迁入 Ultra 包，当前不可用。", TextWrapping = TextWrapping.Wrap } });
+        }
+        packagePages["bluemilk.ultra"] = new ScrollViewer { Content = ultraPage };
         mods.PackagesChanged += packages => {
-            var manifests = packages.EnumerateArray().Select(x => x.GetProperty("manifest").Clone())
-                .GroupBy(x => x.GetProperty("id").GetString()!).ToDictionary(g => g.Key, g => g.First());
-            foreach (var id in packageItems.Keys.Where(id => !manifests.ContainsKey(id)).ToArray()) {
-                if (ReferenceEquals(navigation.SelectedItem, packageItems[id])) navigation.SelectedItem = modsItem;
-                navigation.MenuItems.Remove(packageItems[id]); packageItems.Remove(id); packagePages.Remove(id);
-            }
-            foreach (var pair in manifests.OrderBy(x => x.Value.GetProperty("name").GetString())) {
-                var name = pair.Value.GetProperty("name").GetString()!;
-                if (packageItems.TryGetValue(pair.Key, out var existing)) { existing.Content = name; continue; }
-                var item = new NavigationViewItem { Content = name, Tag = pair.Key, Icon = new SymbolIcon(Symbol.Document) };
-                packageItems.Add(pair.Key, item); navigation.MenuItems.Add(item);
-                if (pair.Key == "bluemilk.pro") packagePages[pair.Key] = battleView;
-                else {
-                    var page = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
-                    page.Children.Add(new TextBlock { Text = name, FontSize = 28 });
-                    page.Children.Add(new TextBlock { Text = "包内功能", FontSize = 20 });
-                    foreach (var capability in pair.Value.GetProperty("capabilities").EnumerateArray())
-                        page.Children.Add(new TextBlock { Text = capability.GetString(), TextWrapping = TextWrapping.Wrap });
-                    page.Children.Add(new TextBlock { Text = "此包尚未接入专属客户端功能页。可在 Mod 管理中编辑、启停，或通过 CLI 使用已提供的接口。", TextWrapping = TextWrapping.Wrap });
-                    packagePages[pair.Key] = new ScrollViewer { Content = page };
-                }
-            }
+            var ids = packages.EnumerateArray().Select(x => x.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
+            ToolTipService.SetToolTip(proItem, ids.Contains("bluemilk.pro") ? "已安装" : "未安装");
+            ToolTipService.SetToolTip(ultraItem, ids.Contains("bluemilk.ultra") ? "已安装" : "未安装");
+            ultraStatus.Title = ids.Contains("bluemilk.ultra") ? "开发中 · 包已安装" : "开发中 · 未安装";
         };
         var cliSmoke = Environment.GetCommandLineArgs().Contains("--smoke-cli");
         var testRoot = cliSmoke ? Environment.GetEnvironmentVariable("SWGOH_CLI_INSTALL_TEST_ROOT") : null;
