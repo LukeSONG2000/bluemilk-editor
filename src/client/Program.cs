@@ -125,6 +125,7 @@ public sealed partial class ShellApplication : Application
         bool allowingClose = false;
         window.AppWindow.Closing += async (_, closing) =>
         {
+            content.StopAutomaticConnection();
             if (allowingClose || !content.HasWorker) return;
             closing.Cancel = true;
             try
@@ -141,6 +142,7 @@ public sealed partial class ShellApplication : Application
         };
         Task<ProbeResult> DetectAsync() => WorkerProbe.RunAsync(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
         window.Activate();
+        if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke"))) content.StartAutomaticConnection();
         if (!Environment.GetCommandLineArgs().Any(x => x.StartsWith("--smoke-")))
             _ = RefreshPackagesAsync();
         async Task RefreshPackagesAsync() { try { await mods.RefreshAsync(); } catch { } }

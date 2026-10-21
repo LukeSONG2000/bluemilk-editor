@@ -10,6 +10,11 @@ internal sealed class ConnectionView : StackPanel
     private bool busy;
     private bool connected;
     private bool disconnectRequested;
+    private readonly DispatcherTimer autoTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private readonly ToggleSwitch automatic = new() { Header = "自动连接与恢复", IsOn = true };
+    private bool autoTick, stopping;
+    private DateTime retryAfter;
+    private int? gamePid;
     private readonly Button connect = new() { Content = "连接游戏" };
     private readonly Button refresh = new() { Content = "刷新场景", IsEnabled = false };
     private readonly Button disconnect = new() { Content = "断开并恢复", IsEnabled = false };
@@ -33,10 +38,48 @@ internal sealed class ConnectionView : StackPanel
         HorizontalAlignment = HorizontalAlignment.Left;
         Children.Add(new TextBlock { Text = "游戏连接", FontSize = 28 });
         Children.Add(new TextBlock { Text = "连接后读取当前游戏场景；战斗助手提供信息拓展和目标属性。", TextWrapping = TextWrapping.Wrap });
-        Children.Add(status); Children.Add(connect); Children.Add(refresh); Children.Add(disconnect); Children.Add(detail);
+        Children.Add(status); Children.Add(automatic); Children.Add(connect); Children.Add(refresh); Children.Add(disconnect); Children.Add(detail);
         connect.Click += async (_, _) => { try { await ConnectAsync(); } catch { } };
         refresh.Click += async (_, _) => { try { await RefreshAsync(); } catch { } };
-        disconnect.Click += async (_, _) => { try { await DisconnectAsync(); } catch { } };
+        disconnect.Click += async (_, _) => { automatic.IsOn = false; try { await DisconnectAsync(); } catch { } };
+        automatic.Toggled += (_, _) => { retryAfter = DateTime.MinValue; };
+        autoTimer.Tick += async (_, _) => await AutoTickAsync();
+    }
+
+    internal void StartAutomaticConnection() { stopping = false; autoTimer.Start(); _ = AutoTickAsync(); }
+    internal void StopAutomaticConnection() { stopping = true; autoTimer.Stop(); }
+    private static bool GameExists(int? pid = null)
+    {
+        var games = System.Diagnostics.Process.GetProcessesByName("SWGoH");
+        try { return pid.HasValue ? games.Any(p => p.Id == pid.Value) : games.Length == 1; }
+        finally { foreach (var process in games) process.Dispose(); }
+    }
+    private async Task AutoTickAsync()
+    {
+        if (stopping || !automatic.IsOn || autoTick || busy || disconnectRequested || DateTime.UtcNow < retryAfter) return;
+        autoTick = true;
+        try {
+            if (runtime != null && connected) {
+                if (!IsPreparedTrial && gamePid.HasValue && !GameExists(gamePid)) {
+                    await DisconnectAsync();
+                    status.Title = "等待游戏启动"; status.Message = "检测到游戏已退出，重新启动后会自动连接。";
+                } else await RefreshAsync();
+            } else if (runtime == null) {
+                if (!GameExists()) {
+                    status.Title = "等待游戏启动"; status.Message = "启动 SWGoH 后自动连接，无需指定安装路径。";
+                    status.Severity = InfoBarSeverity.Informational;
+                } else await ConnectAsync();
+            }
+        } catch (TimeoutException) {
+            automatic.IsOn = false;
+            status.Message = "请求结果尚未确认，自动连接已暂停。请使用断开并恢复处理。";
+        } catch (Exception) {
+            // Only a failed read or rejected connection is retried. Do not replay Mod commands.
+            if (automatic.IsOn && runtime?.IsShared == true && !connected) {
+                await runtime.DetachAsync(); runtime = null; Buttons();
+            }
+            retryAfter = DateTime.UtcNow.AddSeconds(15);
+        } finally { autoTick = false; }
     }
 
     private void Buttons()
@@ -73,6 +116,11 @@ internal sealed class ConnectionView : StackPanel
             runtime = trialDirectory == null ? await OpenSharedAsync()
                 : RuntimeConnection.Start(Path.Combine(AppContext.BaseDirectory, "runtime", "SWGoH-Runtime.exe"));
             IsPreparedTrial = runtime.SharedSessionMode == "prepared";
+            if (runtime.IsShared && runtime.SharedGamePid.HasValue && !IsPreparedTrial && !GameExists(runtime.SharedGamePid)) {
+                await runtime.RequestAsync("disconnect");
+                await runtime.DetachAsync();
+                runtime = await OpenSharedAsync();
+            }
             Buttons();
             var capabilities = await runtime.RequestAsync("capabilities");
             if (capabilities.GetProperty("protocol").GetString() != (runtime.IsShared ? "jsonrpc-2.0-websocket" : "jsonl-v1"))
@@ -82,14 +130,25 @@ internal sealed class ConnectionView : StackPanel
                 ? JsonSerializer.SerializeToElement(new { pid = runtime.SharedGamePid, snapshot = await runtime.RequestAsync("snapshot") })
                 : IsTrialObserver
                 ? await runtime.RequestAsync("trial-connect", new { directory = trialDirectory, pid = trialPid })
-                : await runtime.RequestAsync("connect", new { information = InformationEnabled });
-            if (runtime.IsShared && runtime.SharedGamePid.HasValue && InformationEnabled && !IsPreparedTrial)
-                await runtime.RequestAsync("mods-enable", new { id = "bluemilk.pro" });
+                : await runtime.RequestAsync("connect", new { information = false });
+            if (result.TryGetProperty("pid", out var pid) && pid.ValueKind == JsonValueKind.Number) gamePid = pid.GetInt32();
             connected = true;
             ShowSnapshot(IsTrialObserver ? result : result.GetProperty("snapshot"));
+            if (InformationEnabled && !IsPreparedTrial && !IsTrialObserver) {
+                try { await runtime.RequestAsync("mods-enable", new { id = "bluemilk.pro" }); }
+                catch (RemoteCommandException) {
+                    status.Severity = InfoBarSeverity.Warning;
+                    status.Message = "游戏已连接；信息拓展未启用。请在 Mod 管理中安装、载入并启用 BlueMilk Pro。";
+                }
+            }
             return result;
         }
-        catch (Exception error) { Failure(error); throw; }
+        catch (Exception error) {
+            connected = false;
+            if (error is RemoteCommandException && runtime?.IsShared == true) { await runtime.DetachAsync(); runtime = null; }
+            else if (runtime != null) automatic.IsOn = false;
+            Failure(error); throw;
+        }
         finally { busy = false; Buttons(); }
     }
 
@@ -231,6 +290,7 @@ internal sealed class ConnectionView : StackPanel
 
     internal async Task CloseWindowConnectionAsync()
     {
+        StopAutomaticConnection();
         if (runtime?.IsShared != true) { await DisconnectAsync(); return; }
         disconnectRequested = true; Buttons();
         try
