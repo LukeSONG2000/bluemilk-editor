@@ -160,7 +160,14 @@ globalThis.BlueMilkMods=(()=>{
      records.get(manifest.id).instance=owned;
      return owned;
     }}),
-    battle:Object.freeze({snapshot,events:Object.freeze({
+    battle:Object.freeze({snapshot,aiTrace:Object.freeze({
+     install(){
+      if(!creating)throw Error('Acquire AI trace during the Mod factory call');
+      if(!manifest.capabilities.includes('battle.ai.trace'))throw Error('Missing capability: battle.ai.trace');
+      if(typeof installAITraceMod!=='function')throw Error('Original AI trace provider unavailable');
+      return acquire('ai-trace',()=>installAITraceMod());
+     }
+    }),events:Object.freeze({
      install(options={}){
       if(!creating)throw Error('Acquire battle events during the Mod factory call');
       if(!manifest.capabilities.includes('battle.events.read'))throw Error('Missing capability: battle.events.read');
@@ -236,7 +243,7 @@ globalThis.BlueMilkMods=(()=>{
    }
    for(const other of records.values())if(other.state!=='disabled'&&
     (r.manifest.conflicts.includes(other.manifest.id)||other.manifest.conflicts.includes(r.manifest.id)))throw Error('Conflicting Mod: '+other.manifest.id);
-   for(const capability of ['battle.control','battle.trial'])
+   for(const capability of ['battle.control','battle.trial','battle.ai.trace'])
     if(r.manifest.capabilities.includes(capability)&&[...records.values()].some(other=>other!==r&&other.state!=='disabled'&&other.manifest.capabilities.includes(capability)))
      throw Error('Another Mod owns the exclusive '+capability+' capability');
    r.state='enabling';r.error=null;
