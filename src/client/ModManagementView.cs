@@ -7,6 +7,7 @@ namespace Swgoh.Client;
 internal sealed class ModManagementView : StackPanel
 {
     internal event Action<JsonElement>? PackagesChanged;
+    internal event Action<JsonElement>? RuntimeModsChanged;
     private readonly AppBarButton choose = new() { Label = "添加", Icon = new SymbolIcon(Symbol.Add) };
     private readonly Button install = new() { Content = "安装", IsEnabled = false };
     private readonly AppBarButton refresh = new() { Label = "刷新", Icon = new SymbolIcon(Symbol.Refresh) };
@@ -261,6 +262,7 @@ internal sealed class ModManagementView : StackPanel
         empty.Visibility = list.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (list.Items.Count == 0) detail.Text = "尚未安装 Mod，请选择一个 .bluemilk 文件。";
         PackagesChanged?.Invoke(packages.GetProperty("packages").Clone());
+        RuntimeModsChanged?.Invoke(JsonSerializer.SerializeToElement(runtimeMods.Values.ToArray()));
     }
     internal Task ChangeAsync(string operation) => RunAsync(async service => {
         var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");

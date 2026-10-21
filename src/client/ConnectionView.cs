@@ -27,6 +27,7 @@ internal sealed class ConnectionView : StackPanel
     internal bool IsTrialObserver { get; private set; }
     internal bool IsPreparedTrial { get; private set; }
     internal event Action? StateChanged;
+    internal event Action<JsonElement>? RuntimeModsChanged;
     internal event Action<JsonElement>? SnapshotChanged;
 
     public ConnectionView()
@@ -147,6 +148,7 @@ internal sealed class ConnectionView : StackPanel
     {
         if (runtime == null || IsPreparedTrial || IsTrialObserver) return;
         var state = await runtime.RequestAsync("mods-list");
+        RuntimeModsChanged?.Invoke(state.GetProperty("mods").Clone());
         InformationEnabled = state.GetProperty("mods").EnumerateArray().Any(m =>
             m.GetProperty("manifest").GetProperty("id").GetString() == "bluemilk.pro" && m.GetProperty("state").GetString() == "enabled");
     }

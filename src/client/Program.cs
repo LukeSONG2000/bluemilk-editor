@@ -82,7 +82,23 @@ public sealed partial class ShellApplication : Application
         var trialView = new ScrollViewer { Content = trial };
         var proItem = new NavigationViewItem { Content = "BlueMilk Pro", Tag = "bluemilk.pro", Icon = new SymbolIcon(Symbol.Document) };
         var ultraItem = new NavigationViewItem { Content = "BlueMilk Ultra", Tag = "bluemilk.ultra", Icon = new SymbolIcon(Symbol.Document) };
-        navigation.MenuItems.Add(proItem); navigation.MenuItems.Add(ultraItem);
+        void UpdateRunningMods(JsonElement running) {
+            var enabled = running.EnumerateArray().Where(m => m.GetProperty("state").GetString() == "enabled")
+                .Select(m => m.GetProperty("manifest").GetProperty("id").GetString()).ToHashSet();
+            foreach (var item in new[] { proItem, ultraItem }) {
+                if (enabled.Contains((string)item.Tag)) {
+                    if (!navigation.MenuItems.Contains(item)) navigation.MenuItems.Add(item);
+                } else {
+                    if (ReferenceEquals(navigation.SelectedItem, item)) navigation.SelectedItem = modsItem;
+                    navigation.MenuItems.Remove(item);
+                }
+            }
+        }
+        content.RuntimeModsChanged += UpdateRunningMods;
+        mods.RuntimeModsChanged += UpdateRunningMods;
+        content.StateChanged += () => {
+            if (!content.IsConnected) UpdateRunningMods(JsonSerializer.SerializeToElement(Array.Empty<object>()));
+        };
         packagePages["bluemilk.pro"] = battleView;
         var ultraPage = new StackPanel { Spacing = 16, Padding = new Thickness(24) };
         ultraPage.Children.Add(new TextBlock { Text = "BlueMilk Ultra", FontSize = 28 });
