@@ -50,8 +50,11 @@ internal sealed class ModPageView : StackPanel,IDisposable
                 var requested=asset.GetString()!;
                 family=GameFonts.Activate(await connection.FontAsync(id,hash,requested),requested);
             }
+            JsonElement? image=null;
+            if(feature.Definition.GetProperty("floating").TryGetProperty("spriteAsset",out var sprite))
+                image=await connection.ImageAsync(id,hash,sprite.GetString()!);
             if(disposed)return;
-            var window=new ModFloatingWindow(feature.Definition,family);feature.Floating=window;window.Closed+=(_,_)=>feature.Floating=null;
+            var window=new ModFloatingWindow(feature.Definition,family,image);feature.Floating=window;window.Closed+=(_,_)=>feature.Floating=null;
             if(feature.Model.ValueKind!=JsonValueKind.Undefined)window.Table.Render(feature.Model);
             window.Activate();_ =RefreshAsync();
         }catch(Exception failure){ShowFailure(failure);}finally{feature.Opening=false;}

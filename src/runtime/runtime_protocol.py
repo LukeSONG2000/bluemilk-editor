@@ -24,7 +24,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
                     'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
-                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-set-enabled','mods-command','mods-query','mods-font',
+                    'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-set-enabled','mods-command','mods-query','mods-font','mods-image',
                     'trial-prepare','trial-start','trial-status','trial-control','trial-stop'})
 
 
@@ -124,6 +124,16 @@ class ProtocolSession:
                     # Same session gate, same validated legacy route and journals.
                     # Do not call native reward callbacks directly from the Mod.
                     return self._dispatch(json.dumps({'id': request_id, 'operation': result['operation'], 'payload': result['payload']}))
+            elif operation == 'mods-image':
+                if runtime is not native_runtime or not payload or set(payload)!={'id','sha256','name'}:
+                    raise ValueError('Sprite request requires current Mod and declared name')
+                from mod_store import registration
+                from game_images import cache_sprite,cached_sprite
+                from runtime_core import EXPECTED
+                manifest, _, _=registration(payload['sha256'])
+                if manifest['id']!=payload['id'] or not any(f.get('floating',{}).get('spriteAsset')==payload['name'] for f in manifest.get('desktop',{}).get('features',[])):
+                    raise ValueError('Sprite must be declared by the selected package')
+                result=cached_sprite(payload['name'],EXPECTED) or cache_sprite(runtime.call_args('uisprite',payload['name']),payload['name'],profile=EXPECTED)
             elif operation == 'mods-font':
                 if runtime is not native_runtime or not payload or set(payload) != {'id','sha256','family'}:
                     raise ValueError('Font request requires the current Mod and declared family')

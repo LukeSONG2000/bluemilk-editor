@@ -146,7 +146,7 @@ class AppServer:
                 readonly = params.get('operation') in {
                     'snapshot', 'capabilities', 'mods-list', 'mods-package-list',
                     'mods-config-read', 'mods-profile-read', 'enemy-status',
-                    'trial-status', 'capture-status', 'mods-query', 'mods-font'}
+                    'trial-status', 'capture-status', 'mods-query', 'mods-font', 'mods-image'}
                 ledger = self._reads if readonly else self._responses
                 previous = self._responses.get(request_id) or self._reads.get(request_id)
                 if previous:

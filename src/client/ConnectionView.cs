@@ -174,6 +174,10 @@ internal sealed class ConnectionView : StackPanel
         if(runtime==null||!connected)throw new InvalidOperationException("连接游戏后读取原版字体。");
         return await runtime.RequestAsync("mods-font",new {id,sha256=hash,family});
     }
+    internal async Task<JsonElement> ImageAsync(string id,string hash,string name) {
+        if(runtime==null||!connected)throw new InvalidOperationException("连接游戏后读取原版图像。");
+        return await runtime.RequestAsync("mods-image",new {id,sha256=hash,name});
+    }
 
     internal async Task<JsonElement> PrepareTrialAsync(object payload)
     {

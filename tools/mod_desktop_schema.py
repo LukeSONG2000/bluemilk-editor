@@ -35,12 +35,14 @@ def validate(schema):
             theme=feature['floating']
             if (feature['kind']!='table' or type(theme) is not dict
                     or not {'background','foreground','border','fontFamily','fontSize'} <= set(theme)
-                    or set(theme)-{'background','foreground','border','fontFamily','fontSize','fontAsset'}
+                    or set(theme)-{'background','foreground','border','fontFamily','fontSize','fontAsset','spriteAsset'}
                     or any(type(theme[c]) is not str or not re.fullmatch(r'#[0-9A-Fa-f]{8}',theme[c]) for c in ('background','foreground','border'))
                     or not text(theme['fontFamily'],128) or type(theme['fontSize']) is not int or not 12<=theme['fontSize']<=24):
                 raise ValueError('Invalid floating component theme')
             if 'fontAsset' in theme and (type(theme['fontAsset']) is not str or not re.fullmatch(r'[A-Za-z0-9_ -]{1,96}',theme['fontAsset'])):
                 raise ValueError('Invalid original font family')
+            if 'spriteAsset' in theme and (type(theme['spriteAsset']) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,96}',theme['spriteAsset'])):
+                raise ValueError('Invalid original sprite name')
         if feature['kind']=='table':
             columns=feature.get('columns')
             if type(columns) is not list or not 1 <= len(columns) <= 8:
