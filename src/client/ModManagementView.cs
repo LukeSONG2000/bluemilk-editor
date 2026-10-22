@@ -27,7 +27,7 @@ internal sealed class ModManagementView : StackPanel
         Message = "安装不需要连接游戏。载入和启停前，请在概览中连接游戏。" };
     private readonly Func<nint> windowHandle;
     private string? inspectedPath, inspectedHash;
-    private bool busy, gameConnected, syncingRows;
+    private bool busy, gameConnected, syncingRows, stopping;
     private readonly Dictionary<string, JsonElement> runtimeMods = new();
     private JsonElement startupSelections;
     private JsonElement installedPackages;
@@ -236,6 +236,7 @@ internal sealed class ModManagementView : StackPanel
     }
     private async Task<T> RunAsync<T>(Func<RuntimeConnection, Task<T>> action)
     {
+        if(stopping)throw new InvalidOperationException("客户端正在退出。");
         if (busy) throw new InvalidOperationException("正在处理，请稍候。");
         busy = true; status.IsOpen = false; Update();
         RuntimeConnection? service = null;
@@ -259,6 +260,8 @@ internal sealed class ModManagementView : StackPanel
             finally { busy = false; Update(); }
         }
     }
+    internal async Task StopAsync(){stopping=true;while(busy)await Task.Delay(50);}
+    internal void Resume()=>stopping=false;
     internal Task InspectAsync(string path) => RunAsync(async service => {
         inspectedPath = inspectedHash = null;
         var result = await service.RequestAsync("mods-package-inspect", new { path });

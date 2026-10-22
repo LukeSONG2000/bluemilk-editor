@@ -126,20 +126,27 @@ public sealed partial class ShellApplication : Application
         navigation.Resources["NavigationViewContentGridBorderBrush"]=new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         window.Content=shell;window.SetTitleBar(titlebar);window.AppWindow.TitleBar.ButtonBackgroundColor=Microsoft.UI.Colors.Transparent;window.AppWindow.TitleBar.ButtonInactiveBackgroundColor=Microsoft.UI.Colors.Transparent;
         window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1060,720));
-        var allowingClose=false;
-        window.AppWindow.Closing+=async(_,closing)=>{
-            connection.StopAutomaticConnection();if(allowingClose||!connection.HasWorker)return;
+        var allowingClose=false;var exiting=false;TrayIcon? tray=null;
+        void ShowWindow(){window.AppWindow.Show();if(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)presenter.Restore();window.Activate();Program.Trace("Main window shown");}
+        async Task ExitAsync(){
+            if(exiting)return;exiting=true;
+            try{connection.StopAutomaticConnection();await mods.StopAsync();await connection.ExitApplicationAsync();foreach(var page in pages.Values)page.Components.Dispose();allowingClose=true;tray?.Dispose();Program.Trace("Tray exit cleanup confirmed");window.Close();}
+            catch(Exception error){exiting=false;mods.Resume();Program.Trace("Exit failed: "+error);ShowWindow();}
+        }
+        var smoke=Environment.GetCommandLineArgs().Any(a=>a.StartsWith("--smoke"));
+        if(!smoke||Environment.GetCommandLineArgs().Contains("--smoke-tray")){tray=new TrayIcon(window,ShowWindow,()=>_ =ExitAsync());Program.Trace("Tray available: "+tray.IsAvailable);}
+        window.AppWindow.Closing+=(sender,closing)=>{
+            if(allowingClose)return;
             closing.Cancel=true;
-            try {await connection.CloseWindowConnectionAsync();allowingClose=true;window.Close();}catch { }
+            if(tray is {IsAvailable:true}){window.AppWindow.Hide();Program.Trace("Main window hidden to tray");}else _ =ExitAsync();
         };
         window.Activate();
-        window.Closed+=(_,_)=>{foreach(var page in pages.Values)page.Components.Dispose();GameFonts.ReleaseAll();};
+        window.Closed+=(_,_)=>{tray?.Dispose();foreach(var page in pages.Values)page.Components.Dispose();GameFonts.ReleaseAll();};
         var importGate=new SemaphoreSlim(1,1);
         async Task OpenPackagesAsync(string[] arguments) {
             await importGate.WaitAsync();
             try {
-                if(window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)presenter.Restore();
-                window.Activate();var paths=PackageOpenArguments.Parse(arguments);if(paths.Length==0)return;
+                ShowWindow();var paths=PackageOpenArguments.Parse(arguments);if(paths.Length==0)return;
                 navigation.SelectedItem=management;foreach(var path in paths)await mods.InstallFromActivationAsync(path);
             }catch(Exception error){mods.ImportFailure(error);}finally{importGate.Release();}
         }

@@ -330,4 +330,19 @@ internal sealed class ConnectionView : StackPanel
         }
         finally { disconnectRequested = false; Buttons(); }
     }
+    internal async Task ExitApplicationAsync() {
+        StopAutomaticConnection();disconnectRequested=true;Buttons();
+        try{
+            while(busy)await Task.Delay(50);
+            if(runtime!=null)await runtime.ExitFrontendAsync();
+            else {
+                // Offline package management can start an idle shared host too.
+                var endpoint=ServerEndpoint.Read();
+                if(endpoint!=null){using var shared=await SharedConnection.OpenAsync(endpoint.Uri,endpoint.Token,endpoint.Instance,endpoint.Pid);await shared.ShutdownIfAloneAsync();}
+            }
+            runtime=null;connected=false;
+        }
+        catch(Exception error){Failure(error);throw;}
+        finally{disconnectRequested=false;Buttons();}
+    }
 }

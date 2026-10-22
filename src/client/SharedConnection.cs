@@ -12,6 +12,7 @@ internal sealed class SharedConnection : IDisposable
     private string instance = "";
     private long sequence;
     private readonly CancellationTokenSource lifetime = new();
+    private readonly SemaphoreSlim sending = new(1,1);
     private readonly Channel<JsonElement> replies = Channel.CreateBounded<JsonElement>(1);
     private Task? receiver;
     private int disposed;
@@ -19,6 +20,7 @@ internal sealed class SharedConnection : IDisposable
     internal int? GamePid { get; private set; }
     internal string SessionMode { get; private set; } = "normal";
     internal bool SupportsUpdateShutdown { get; private set; }
+    internal bool SupportsExitShutdown { get; private set; }
 
     internal static Uri ValidateEndpoint(string endpoint)
     {
@@ -53,6 +55,7 @@ internal sealed class SharedConnection : IDisposable
             if (info.TryGetProperty("gamePid", out var pid) && pid.ValueKind == JsonValueKind.Number)
                 connection.GamePid = pid.GetInt32();
             if (info.TryGetProperty("sessionMode", out var mode)) connection.SessionMode = mode.GetString() ?? "normal";
+            connection.SupportsExitShutdown = info.TryGetProperty("exitShutdownSupported",out var exit) && exit.ValueKind==JsonValueKind.True;
             connection.SupportsUpdateShutdown =
                 info.TryGetProperty("updateShutdownSupported", out var update) && update.ValueKind == JsonValueKind.True &&
                 info.TryGetProperty("updateLeaseVersion", out var lease) && lease.TryGetInt32(out var leaseVersion) && leaseVersion == 2;
@@ -63,6 +66,33 @@ internal sealed class SharedConnection : IDisposable
 
     internal Task<JsonElement> RequestAsync(string operation, object? payload) =>
         ExchangeAsync("runtime.call", new { instance, operation, payload });
+
+    internal async Task ShutdownForInstallAsync() {
+        var result=await ExchangeAsync("server.shutdown",new {instance});
+        if(!result.TryGetProperty("stopped",out var stopped)||stopped.ValueKind!=JsonValueKind.True)
+            throw new IOException("共享服务未确认退出。");
+    }
+    internal async Task<bool> ShutdownIfAloneAsync() {
+        if(!SupportsExitShutdown)return false; // Older services remain owned by their existing frontends.
+        System.Diagnostics.Process host;
+        try{host=System.Diagnostics.Process.GetProcessById(HostPid);_ =host.Handle;}
+        catch(ArgumentException){return true;} // A stopped host must not trap the Editor in the tray.
+        using var hostLifetime=host;
+        if(host.HasExited)return true;
+        JsonElement result;
+        try{result=await ExchangeAsync("server.shutdownIfAlone",new {instance});}
+        catch(Exception failure)when(failure is IOException or WebSocketException or OperationCanceledException or ObjectDisposedException){
+            // A peer can close its socket just before the bootstrapper exits.
+            // Wait for that verified process, without replaying the shutdown request.
+            using var gone=new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try{await host.WaitForExitAsync(gone.Token);return true;}
+            catch(OperationCanceledException){throw new IOException("服务连接已关闭，但尚未确认服务退出。",failure);}
+        }
+        if(result.TryGetProperty("stopped",out var stopped)&&stopped.ValueKind==JsonValueKind.False&&result.GetProperty("reason").GetString()=="other-frontends")return false;
+        if(stopped.ValueKind!=JsonValueKind.True||result.GetProperty("reason").GetString()!="exit")throw new IOException("服务未确认退出。");
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(30));await host.WaitForExitAsync(deadline.Token);
+        if(host.ExitCode!=0)throw new IOException("共享服务退出异常。");return true;
+    }
 
     // Use a dedicated connection: a timeout has an unknown outcome and must not
     // be followed by another exchange or an unconditional shutdown fallback.
@@ -81,7 +111,9 @@ internal sealed class SharedConnection : IDisposable
         var id = clientId + ":" + (++sequence);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id, method, @params = parameters });
         if (bytes.Length > 16384) throw new ArgumentException("请求超过共享服务的大小限制。");
-        await socket.SendAsync(bytes.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None);
+        await sending.WaitAsync(lifetime.Token);
+        try{await socket.SendAsync(bytes.AsMemory(), WebSocketMessageType.Text, true, lifetime.Token);}
+        finally{sending.Release();}
         JsonElement root;
         try { root = await replies.Reader.ReadAsync(lifetime.Token); }
         catch (ChannelClosedException closed) { throw new IOException("共享服务连接中断；请求结果尚未确认。", closed); }
@@ -105,6 +137,12 @@ internal sealed class SharedConnection : IDisposable
                 ValueWebSocketReceiveResult received;
                 do {
                     received = await socket.ReceiveAsync(chunk.AsMemory(), token).ConfigureAwait(false);
+                    if(received.MessageType==WebSocketMessageType.Close){
+                        await sending.WaitAsync(token).ConfigureAwait(false);
+                        try{if(socket.State==WebSocketState.CloseReceived)await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure,"",token).ConfigureAwait(false);}
+                        finally{sending.Release();}
+                        throw new IOException("共享服务已关闭连接。");
+                    }
                     if (received.MessageType != WebSocketMessageType.Text)
                         throw new IOException("共享服务连接中断或返回无效消息；请求结果尚未确认。");
                     if (buffer.Length + received.Count > 16 * 1024 * 1024)

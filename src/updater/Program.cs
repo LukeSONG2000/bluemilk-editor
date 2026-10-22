@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Swgoh.Client;
 
+if(args.Length>0&&args[0] is "--query-install" or "--prepare-install")return await InstallationPreparation.RunAsync(args);
 if (args.Length != 1) return 2;
 var jobPath = Path.GetFullPath(args[0]);
 var root = Path.GetDirectoryName(jobPath)!;
@@ -75,7 +76,7 @@ try
         {
             var start = new ProcessStartInfo(job.PackagePath) { UseShellExecute = false, CreateNoWindow = true };
             foreach (var arg in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-",
-                "/DIR=" + job.InstallDirectory, "/LOG=" + Path.Combine(root, "installer.log") }) start.ArgumentList.Add(arg);
+                "/BLUEMILKUPDATER=1", "/DIR=" + job.InstallDirectory, "/LOG=" + Path.Combine(root, "installer.log") }) start.ArgumentList.Add(arg);
             using var installer = Process.Start(start) ?? throw new IOException("Installer did not start");
             // Do not timeout and release the lease while an installer is still writing.
             await installer.WaitForExitAsync();

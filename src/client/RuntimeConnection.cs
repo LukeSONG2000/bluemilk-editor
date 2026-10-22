@@ -49,6 +49,12 @@ internal sealed class RuntimeConnection
         try { shared.Dispose(); closed = true; }
         finally { gate.Release(); }
     }
+    internal async Task ExitFrontendAsync() {
+        if(shared==null){await CloseAsync();return;}
+        await gate.WaitAsync();
+        try{if(closed)return;await shared.ShutdownIfAloneAsync();shared.Dispose();closed=true;}
+        finally{gate.Release();}
+    }
 
     internal static RuntimeConnection Start(string executable, bool prepared = false)
     {

@@ -47,6 +47,40 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         async with self.client() as reconnected:
             self.assertEqual((await self.call(reconnected, 'cli-2'))['result']['state'], 'Home')
 
+    async def exit_request(self, client, instance=None):
+        await client.send(json.dumps({'jsonrpc':'2.0','id':'desktop-exit','method':'server.shutdownIfAlone',
+                                     'params':{'instance':instance or self.server.instance}}))
+        return json.loads(await client.recv())
+
+    async def test_tray_exit_cleans_active_runtime_when_only_frontend(self):
+        self.server.game_pid = 123
+        async with self.client() as desktop:
+            result = await self.exit_request(desktop)
+            self.assertEqual(result['result'], {'stopped':True,'reason':'exit'})
+        self.runtime.disconnect.assert_called_once()
+        self.assertTrue(self.server._stopped)
+
+    async def test_tray_exit_preserves_connected_cli(self):
+        async with self.client() as desktop, self.client() as cli:
+            result = await self.exit_request(desktop)
+            self.assertEqual(result['result'], {'stopped':False,'reason':'other-frontends'})
+            self.runtime.disconnect.assert_not_called()
+            self.assertIn('result', await self.call(cli,'cli-still-works'))
+
+    async def test_tray_exit_rejects_wrong_instance(self):
+        async with self.client() as desktop:
+            self.assertIn('error', await self.exit_request(desktop,'wrong-instance'))
+            self.runtime.disconnect.assert_not_called()
+
+    async def test_tray_exit_cleanup_failure_keeps_service_recoverable(self):
+        self.runtime.disconnect.side_effect = RuntimeError('cleanup failed')
+        async with self.client() as desktop:
+            self.assertIn('error', await self.exit_request(desktop))
+            self.assertFalse(self.server._stopped)
+            self.assertFalse(self.server._updating)
+            self.runtime.disconnect.side_effect = None
+            self.assertIn('result', await self.call(desktop,'read-after-failed-exit'))
+
     async def test_id_dedup_survives_disconnect_and_rejects_changed_request(self):
         async with self.client() as first:
             reply = await self.call(first, 'once')

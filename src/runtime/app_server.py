@@ -98,6 +98,7 @@ class AppServer:
                     'sessionMode': 'prepared' if self.session.trials.owns_session else ('normal' if self.game_pid is not None else 'idle'),
                     'sharedRuntime': True, 'remoteEnabled': False,
                     'updateShutdownSupported': True,
+                    'exitShutdownSupported': True,
                     'updateLeaseVersion': 2,
                     'disconnectPolicy': 'Frontend disconnect retains shared runtime',
                     'retryPolicy': 'Never replay against a different server instance'}}
@@ -123,6 +124,21 @@ class AppServer:
                         if not self._stopped:
                             self._updating = False
                 return {'jsonrpc': '2.0', 'id': request_id, 'result': {'stopped': True, 'reason': 'update'}}
+            if request.get('method') == 'server.shutdownIfAlone':
+                if request.get('params') != {'instance': self.instance}:
+                    return self.error(request_id, -32602, 'Current server instance required')
+                async with self._gate:
+                    if client is None or self._clients != {client}:
+                        return {'jsonrpc': '2.0', 'id': request_id, 'result': {
+                            'stopped': False, 'reason': 'other-frontends'}}
+                    self._updating = True  # Reject new clients while restoring native resources.
+                    try:
+                        await asyncio.to_thread(self.session.close)
+                        self._stopped = True
+                    finally:
+                        if not self._stopped:
+                            self._updating = False
+                return {'jsonrpc': '2.0', 'id': request_id, 'result': {'stopped': True, 'reason': 'exit'}}
             if request.get('method') == 'server.shutdown':
                 if request.get('params') != {'instance': self.instance}:
                     return self.error(request_id, -32602, 'Current server instance required')
