@@ -40,6 +40,9 @@ internal sealed class ModManagementView : StackPanel
         HorizontalAlignment = HorizontalAlignment.Stretch;
         var commands = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var command in new[] { choose, configure, uninstall, update }) commands.PrimaryCommands.Add(command);
+        var localUpdate = new AppBarButton { Label = "从文件更新", Icon = new SymbolIcon(Symbol.OpenFile) };
+        localUpdate.Click += async (_, _) => { try { await PickPackageAsync(true); } catch(Exception e) { Failure(e); } };
+        commands.SecondaryCommands.Add(localUpdate);
         commands.SecondaryCommands.Add(enable); commands.SecondaryCommands.Add(disable); commands.SecondaryCommands.Add(startup); commands.SecondaryCommands.Add(load); commands.SecondaryCommands.Add(refresh);
         Children.Add(commands);
         Children.Add(ColumnRow("名称", "版本", "支持模式", ""));
@@ -64,7 +67,7 @@ internal sealed class ModManagementView : StackPanel
             finally { e.Handled = true; deferral.Complete(); }
         };
         choose.Click += async (_, _) => { try { await PickPackageAsync(false); } catch (Exception e) { Failure(e); } };
-        update.Click += async (_, _) => { try { await PickPackageAsync(true); } catch (Exception e) { Failure(e); } };
+        update.Click += async (_, _) => { try { await CheckUpdateAsync(); } catch (Exception e) { Failure(e); } };
         install.Click += async (_, _) => { try { await InstallAsync(); } catch { } };
         refresh.Click += async (_, _) => { try { await RefreshAsync(); } catch { } };
         load.Click += async (_, _) => { try { await ChangeAsync("mods-package-register"); } catch { } };
@@ -135,6 +138,38 @@ internal sealed class ModManagementView : StackPanel
         }
         return grid;
     }
+    private Task CheckUpdateAsync() => RunAsync(async service => {
+        var row = Selected ?? throw new InvalidOperationException("请先选择 Mod。");
+        status.IsOpen = true; status.Title = "正在检查更新"; status.Message = "";
+        var release = await service.RequestAsync("mods-package-check-update", new { sha256 = row.Hash }, TimeSpan.FromMinutes(2));
+        var state = release.GetProperty("state").GetString();
+        status.Title = state switch {
+            "up-to-date" => "当前已是最新版本",
+            "no-release" => "尚无正式发布版本",
+            "no-repository" => "此 Mod 未声明更新仓库",
+            "repository-unavailable" => "无法访问 Mod 仓库",
+            "access-denied-or-rate-limited" => "访问被拒绝或请求达到限制",
+            "update-available" => "有最新版本",
+            _ => "更新检查未完成"
+        };
+        status.Severity = InfoBarSeverity.Informational;
+        if (state != "update-available") return true;
+        var version = release.GetProperty("latestVersion").GetString();
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = $"更新 {row.Name} 至 {version}？",
+            Content = "下载并校验新版 Mod 包。旧版本和配置保留，安装后可开启新版。",
+            PrimaryButtonText = "下载更新", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Primary };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return true;
+        status.Title = "正在下载并校验 Mod";
+        var result = await service.RequestAsync("mods-package-update", new { sha256 = row.Hash, version,
+            packageSha256 = release.GetProperty("sha256").GetString() }, TimeSpan.FromMinutes(3));
+        await PopulateAsync(service);
+        var hash = result.GetProperty("sha256").GetString();
+        list.SelectedItem = list.Items.Cast<ListViewItem>().First(x => ((Row)x.Tag).Hash == hash);
+        status.IsOpen = true; status.Title = "新版已安装"; status.Message = "开启新版后生效，旧版本及配置保留。";
+        status.Severity = InfoBarSeverity.Success;
+        return true;
+    });
+
     private async Task PickPackageAsync(bool updating)
     {
         var row = updating ? Selected ?? throw new InvalidOperationException("请先选择 Mod。") : null;
@@ -268,7 +303,7 @@ internal sealed class ModManagementView : StackPanel
         var manifest = result.GetProperty("manifest");
         inspectedPath = path; inspectedHash = result.GetProperty("sha256").GetString();
         package.Text = $"{manifest.GetProperty("name").GetString()}  {manifest.GetProperty("version").GetString()}\n" +
-            $"发布者（自述）：{manifest.GetProperty("publisher").GetString()}\n{Path.GetFileName(path)}";
+            $"发布者（自述）：{(manifest.TryGetProperty("author", out var author) ? author.GetString() : "未提供")}\n{Path.GetFileName(path)}";
         status.Title = "检查通过"; status.Message = "文件清单和内容摘要已核对，尚未安装或执行。";
         status.Severity = InfoBarSeverity.Success;
         return true;

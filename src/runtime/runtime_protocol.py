@@ -23,7 +23,7 @@ OPERATIONS = sorted(set(DIRECT) | INVENTORY | ENEMY | set(MENUS) | set(PREBATTLE
                     'inventory-characters','inventory-ships','capture-start','capture-status','capture-stop',
                     'battle-inspect','battle-inspect-close','trial-connect','inbox-claim','inbox-claim-status',
                     'objectives-claim','objectives-claim-status','mods-list','mods-enable','mods-disable',
-                    'mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
+                    'mods-package-check-update','mods-package-update','mods-package-inspect','mods-package-install','mods-package-list','mods-package-register','mods-package-uninstall',
                     'mods-config-read','mods-config-write','mods-profile-read','mods-profile-write','mods-set-enabled','mods-command','mods-query','mods-font','mods-image',
                     'trial-prepare','trial-start','trial-status','trial-control','trial-stop'})
 
@@ -178,6 +178,13 @@ class ProtocolSession:
                     raise ValueError('Mod package change requires only installed sha256')
                 result = (runtime.register_package(payload['sha256']) if operation == 'mods-package-register'
                           else runtime.uninstall_package(payload['sha256']))
+            elif operation in ('mods-package-check-update', 'mods-package-update'):
+                from mod_updates import check, update
+                fields = {'sha256'} if operation == 'mods-package-check-update' else {'sha256', 'version', 'packageSha256'}
+                if not payload or set(payload) != fields or any(not isinstance(v, str) for v in payload.values()):
+                    raise ValueError('Invalid Mod update payload')
+                result = (check(payload['sha256']) if operation == 'mods-package-check-update' else
+                          update(payload['sha256'], payload['version'], payload['packageSha256']))
             elif operation == 'mods-package-list':
                 from mod_store import discover
                 if payload not in (None, {}):

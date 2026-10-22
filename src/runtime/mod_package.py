@@ -1,4 +1,5 @@
 """Read-only ZIP inspection. Integrity is not publisher authentication or a sandbox."""
+from datetime import datetime
 import hashlib
 import json
 import re
@@ -36,10 +37,35 @@ def validate_manifest(value):
         raise ValueError('Invalid Mod ID')
     if not valid_version(value.get('version')):
         raise ValueError('Invalid Mod version')
-    for key in ('name', 'publisher'):
+    for key in ('name', *(k for k in ('publisher', 'author') if k in value)):
         text = value.get(key)
         if not isinstance(text, str) or not text.strip() or len(text) > 256:
             raise ValueError('Invalid Mod ' + key)
+    if 'publishedAt' in value:
+        date = value['publishedAt']
+        if not isinstance(date, str) or len(date) > 40:
+            raise ValueError('Invalid publishedAt')
+        try:
+            parsed = datetime.fromisoformat(date.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                raise ValueError()
+        except ValueError as error:
+            raise ValueError('publishedAt requires an ISO-8601 date with timezone') from error
+    if 'repository' in value:
+        if not isinstance(value['repository'], str) or not re.fullmatch(
+                r'https://github\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}', value['repository']):
+            raise ValueError('repository requires a canonical HTTPS GitHub repository URL')
+        if value['repository'].rsplit('/', 1)[1] in ('.', '..'):
+            raise ValueError('Invalid repository')
+    if 'updates' in value:
+        update = value['updates']
+        if (not isinstance(update, dict) or set(update) != {'provider', 'asset'}
+                or update['provider'] != 'github' or 'repository' not in value
+                or not isinstance(update['asset'], str)
+                or update['asset'].count('{version}') != 1
+                or not re.fullmatch(r'[A-Za-z0-9_.-]*\{version\}[A-Za-z0-9_.-]*\.bluemilk', update['asset'])
+                or len(update['asset']) > 180):
+            raise ValueError('Invalid GitHub updates definition')
     if type(value.get('sdkVersion')) is not int or value['sdkVersion'] not in (1, 2):
         raise ValueError('Unsupported SDK')
     if value.get('gameProfile') != 'swgoh-0.40.7':

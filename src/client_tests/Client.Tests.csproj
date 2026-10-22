@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../client/InstallerLaunch.cs" Link="InstallerLaunch.cs" />
     <Compile Include="../client/UpdateLease.cs" Link="UpdateLease.cs" />
     <Compile Include="../client/UpdatePreparation.cs" Link="UpdatePreparation.cs" />
     <Compile Include="../client/ReleaseUpdates.cs" Link="ReleaseUpdates.cs" />

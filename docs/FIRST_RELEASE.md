@@ -63,3 +63,11 @@ DNS 实测处于 Mihomo fake-IP 环境，指定多个解析器仍得到相同 fa
 补充退出边界：服务主动关闭连接时，旧接收循环把 Close 帧当无效消息，未回应关闭握手，可能等待约 10 秒且退出第一次失败。现在序列化发送与 CloseOutput 确认，等待已验证的原进程短暂释放，不重发关闭命令、不强杀。最终 source stage 在原游戏已连接、宿主先退出的情况下，第一次请求 0.201 秒正常退出且无错误。现有共享更新准备 8 类集成场景（冻结宿主/其他前端/旧协议/旧锁/活动会话/错误确认/取消/跨端点互斥）全过，错误更新包 5 类拒绝与防重放全过。
 
 最终实装复核另覆盖发送时 Socket 已为 Closed 的 WebSocketException（并非 IOException）；退出确认分支统一处理 IO/Socket/取消/Dispose 错误，只等待原宿主释放，不重放关闭请求。最终 `BlueMilk-Editor-0.2.5-verified-release` 的 Setup 已再次真实安装，DLL 与发布 stage 哈希相同；连接原版、先停宿主再退出，第一次请求 exit 0，原游戏存活。QA 安装已正常卸载 exit 0，原用户关联/快捷方式恢复，D 盘机器安装未覆盖。交付 `logs/BlueMilk-0.2.5-user-test`：Setup 151275403 bytes，SHA256 6c652e5e275480989cc0da864cc3c041dd980be3a4d367e52f45199555333e0b；Pro 0.2.4 保持原包。
+
+## 0.2.6 Editor / 0.2.5 Pro：更新入口
+
+用户已验收 0.2.5 安装器。Pro 商店购买失败修复改为布尔开关，开启固定 15 秒、关闭恢复原值，移除跳过预检；精确使用用户提供的描述。作者字段为 LukeSONG2000，去掉自拟 BlueMilk project；未发布包不虚构发布时间。详情显示版本、作者、发布时间及直接可点击仓库来源。
+
+Editor 下载校验后使用 Windows Shell 自动打开正常安装程序，复用已验收的 UAC、占用关闭确认与完成页重启流程；不在后台静默强制安装。新版本/相等/旧版本、错误摘要与无正式 Release 均有测试。Mod 更新在共享运行时实现，离线包的 repository/updates.asset 可供桌面和 CLI 使用，核对确认版本/摘要、包 ID、仓库与清单后安装，旧版本保留，不自动执行。标准见 MOD_UPDATES.md。
+
+本轮 115 客户端测试、197 运行时测试及 Pro 属性/固定时限/生命周期封包验证通过。真正 Release 还不存在：两仓库在线返回 no-release；冻结宿主后续匿名请求遇 GitHub 访问限制时正确返回 access-denied-or-rate-limited。最终客户端界面在隔离配置运行超过 15 秒，检查更新显示尚无正式发布版本。完整真实 GitHub 下载→覆盖升级需首个 Release 后验收；没有创建测试 Release。

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Net.Http;
@@ -11,7 +12,7 @@ internal sealed class UpdateSettingsView : StackPanel
     private readonly UpdateChannel channel;
     private readonly string publisher = "CN=BlueMilk Editor";
     private readonly Button check = new() { Content = "检查更新" };
-    private readonly Button download = new() { Content = "下载更新", IsEnabled = false };
+    private readonly Button download = new() { Content = "下载并安装", IsEnabled = false };
     private readonly Button cancel = new() { Content = "取消", Visibility = Visibility.Collapsed };
     private readonly InfoBar status = new() { IsOpen = false, IsClosable = true, Title = "尚未检查更新" };
     private readonly ProgressBar progress = new() { IsIndeterminate = true, Visibility = Visibility.Collapsed };
@@ -49,7 +50,7 @@ internal sealed class UpdateSettingsView : StackPanel
     {
         check.IsEnabled = !busy;
         credential.IsEnabled = !busy;
-        download.IsEnabled = !busy && available != null && LastState != "download-verified";
+        download.IsEnabled = !busy && available != null && LastState != "installer-started";
         cancel.Visibility = progress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -80,7 +81,7 @@ internal sealed class UpdateSettingsView : StackPanel
             status.Message = result.State switch
             {
                 "repository-unavailable" => "请确认 LukeSONG2000/bluemilk-editor 仓库可访问。",
-                "update-available" => "可以先下载更新包；下载完成不会修改当前版本。",
+                "update-available" => "下载并校验后自动打开安装程序。安装程序会确认关闭当前客户端。",
                 "no-release" => "仓库可访问，但尚未发布正式安装包。",
                 "access-denied-or-rate-limited" => "请检查仓库权限，或稍后重试。",
                 _ => ""
@@ -104,12 +105,15 @@ internal sealed class UpdateSettingsView : StackPanel
             if (available.Channel != channel) throw new InvalidDataException("Update channel mismatch.");
             if (channel == UpdateChannel.Msix)
                 MsixIdentity.ReadAndValidate(packagePath, available.Version, publisher);
-            LastState = "download-verified";
-            status.Title = "下载已校验，尚未安装";
-            status.Message = "文件完整性已校验，不代表发布者签名已验证。安装与重启更新尚未接入；当前版本未改变。";
+            operation.Token.ThrowIfCancellationRequested();
+            using var installer = Process.Start(InstallerLaunch.Create(packagePath, AppContext.BaseDirectory, channel));
+            if (installer == null) throw new IOException("安装程序未启动。");
+            LastState = "installer-started";
+            status.Title = "安装程序已打开";
+            status.Message = "请按安装程序完成更新；完成页可重新启动 BlueMilk Editor。";
         }
         catch (OperationCanceledException) { LastState = "cancelled"; status.Title = "下载已取消"; }
-        catch { LastState = "failed"; status.Title = "下载或校验失败"; status.Message = "当前版本未改变，可稍后重试。"; status.Severity = InfoBarSeverity.Error; }
+        catch { LastState = "failed"; status.Title = "下载、校验或启动安装程序未完成"; status.Message = "当前版本未改变，可稍后重试。"; status.Severity = InfoBarSeverity.Error; }
         finally { operation.Dispose(); operation = null; Busy(false); }
     }
 }

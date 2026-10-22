@@ -128,10 +128,11 @@ internal sealed class ModDetailView : StackPanel
     private readonly ContentControl icon = new() { Width = 48, Height = 48, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock name = new() { FontSize = 28 };
     private readonly TextBlock metadata = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7 };
+    private readonly HyperlinkButton sourceLink = new() { Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBlock description = new() { TextWrapping = TextWrapping.Wrap };
     internal ModDetailView(string title, FrameworkElement configuration, DashboardFeature[] features, DashboardPreferences preferences) {
         Spacing = 20; Padding = new Thickness(24,8,24,24); name.Text = title;
-        var text = new StackPanel { Spacing = 4 }; text.Children.Add(name); text.Children.Add(metadata);
+        var text = new StackPanel { Spacing = 4 }; text.Children.Add(name); text.Children.Add(metadata); text.Children.Add(sourceLink);
         var header = new Grid { ColumnSpacing = 16 }; header.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); header.ColumnDefinitions.Add(new() { Width = new GridLength(1,GridUnitType.Star) });
         header.Children.Add(icon); Grid.SetColumn(text,1); header.Children.Add(text); Children.Add(header); Children.Add(description);
         var visibility = new StackPanel { Spacing = 12 };
@@ -152,9 +153,16 @@ internal sealed class ModDetailView : StackPanel
         var m = package.GetProperty("manifest");
         name.Text = m.GetProperty("name").GetString();
         var image = ModIcon.Create(package); image.Width = image.Height = 40; icon.Content = image;
-        metadata.Text = m.GetProperty("version").GetString() + "  ·  " + m.GetProperty("publisher").GetString();
+        var author = m.TryGetProperty("author", out var a) ? a.GetString() : null;
+        var published = m.TryGetProperty("publishedAt", out var p) && DateTimeOffset.TryParse(p.GetString(), out var date)
+            ? date.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "未发布";
+        metadata.Text = $"{m.GetProperty("version").GetString()}  ·  {author ?? "作者未提供"}  ·  {published}";
+        AutomationProperties.SetName(metadata, "版本、作者、发布时间：" + metadata.Text);
         description.Text = m.TryGetProperty("description", out var d) ? d.GetString() :
             "";
-        metadata.Text += "\n来源：" + (m.TryGetProperty("repository", out var source) ? source.ToString() : "本地安装包");
+        sourceLink.Visibility = Visibility.Collapsed;
+        if (m.TryGetProperty("repository", out var source) && Uri.TryCreate(source.GetString(), UriKind.Absolute, out var uri) && uri.Scheme == "https") {
+            sourceLink.NavigateUri = uri; sourceLink.Content = uri.AbsolutePath.TrimStart('/'); ToolTipService.SetToolTip(sourceLink, uri.AbsoluteUri); sourceLink.Visibility = Visibility.Visible;
+        }
     }
 }

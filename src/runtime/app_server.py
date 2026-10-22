@@ -160,7 +160,7 @@ class AppServer:
                 # Only verified read operations may expire. Mutations (including failures
                 # and uncertain outcomes) remain pinned for the entire server instance.
                 readonly = params.get('operation') in {
-                    'snapshot', 'capabilities', 'mods-list', 'mods-package-list',
+                    'snapshot', 'capabilities', 'mods-list', 'mods-package-list', 'mods-package-check-update',
                     'mods-config-read', 'mods-profile-read', 'enemy-status',
                     'trial-status', 'capture-status', 'mods-query', 'mods-font', 'mods-image'}
                 ledger = self._reads if readonly else self._responses

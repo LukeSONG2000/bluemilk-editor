@@ -111,3 +111,7 @@ not been migrated by this change; no Ultra package is bundled or enabled.
 ### Original nine-slice image (Editor 0.2.2)
 
 Optional `floating.spriteAsset` names an exact NGUI atlas sprite. `mods-image` accepts `{id,sha256,name}` only for a verified installed package declaring that name. The native adapter reads at most a 512×512 sprite, preserves RGBA and original borders, restores the previous render target and destroys temporary GPU textures. The host validates pixel geometry, writes a local PNG and caches its metadata under the supported game binary identity. Nothing is downloaded or redistributed. The native WinUI `Image.NineGrid` draws that local image over a transparent DWM surface; XAML foreground stays opaque. If no cached sprite or loaded original atlas exists, entering battle once is required.
+
+## Package provenance and updates
+
+Optional author, publishedAt, repository and updates fields are defined in [Mod update standard](../docs/MOD_UPDATES.md). Offline imports preserve these fields. Desktop and CLI share mods-package-check-update and mods-package-update; installing an update never executes it.

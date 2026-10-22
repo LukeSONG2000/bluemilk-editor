@@ -11,7 +11,7 @@ globalThis.BlueMilkMods=(()=>{
   if(busy||closing)throw Error('Another Mod lifecycle operation is in progress');
   if(!manifest||!validId(manifest.id)||records.has(manifest.id))throw Error('Invalid or duplicate Mod ID');
   if(!validVersion(manifest.version))throw Error('Invalid Mod version; require major.minor.patch');
-  for(const key of ['name','publisher'])
+  for(const key of ['name',...['publisher','author'].filter(k=>k in manifest)])
    if(typeof manifest[key]!=='string'||!manifest[key].trim()||manifest[key].length>256)throw Error('Invalid Mod '+key);
   if(![1,2].includes(manifest.sdkVersion)||manifest.gameProfile!=='swgoh-0.40.7')throw Error('Unsupported Mod SDK or game profile');
   for(const key of ['capabilities','presentations','conflicts','dependencies'])

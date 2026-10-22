@@ -12,7 +12,7 @@
 AppId={{703A2E24-7644-42A6-83C5-06B7F84D01D1}
 AppName=BlueMilk Editor
 AppVersion={#AppVersion}
-AppPublisher=BlueMilk project
+AppPublisher=LukeSONG2000
 DefaultDirName={autopf}\BlueMilk Editor
 DefaultGroupName=BlueMilk Editor
 PrivilegesRequired=admin

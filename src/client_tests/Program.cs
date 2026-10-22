@@ -309,4 +309,10 @@ File.WriteAllText(floatPath,"{corrupt");
 Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(580,680),"corrupt floating preferences fall back safely");
 floatPreferences.Save("pro.attributes",new(420,300));
 Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(420,300),"floating preferences recover after corruption");
+var launchFile=Path.Combine(root,"installer sample.exe");
+File.WriteAllText(launchFile,"fixture, never executed");
+var launch=InstallerLaunch.Create(launchFile,Path.Combine(root,"安装 Program Files"),UpdateChannel.Exe);
+Check(launch.UseShellExecute && launch.FileName==launchFile,"installer launch uses shell for normal UAC");
+Check(launch.ArgumentList.Count==2 && launch.ArgumentList[0].StartsWith("/DIR=") && !launch.ArgumentList.Any(x=>x.Contains("SILENT")||x.Contains("BLUEMILKUPDATER")),"normal installer owns confirmation and app shutdown");
+try { InstallerLaunch.Create(launchFile+"missing",root,UpdateChannel.Exe); throw new Exception("missing installer accepted"); } catch(IOException){passed++;}
 Console.WriteLine(JsonSerializer.Serialize(new { passed, root }));
