@@ -294,4 +294,19 @@ foreach (var invalid in new[] { new[] { "--install-mod" }, new[] { "--install-mo
     try { PackageOpenArguments.Parse(invalid); throw new Exception("invalid package activation accepted"); }
     catch (ArgumentException) { passed++; }
 }
+var floatPath=Path.Combine(root,"floating","windows.json");
+var floatPreferences=new FloatingWindowPreferences(floatPath);
+Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(580,680),"floating first-use default");
+floatPreferences.Save("pro.attributes",new(444,512));
+Check(new FloatingWindowPreferences(floatPath).Read("pro.attributes")==new FloatingWindowSize(444,512),"floating logical size survives restart");
+var otherPreferences=new FloatingWindowPreferences(floatPath);
+otherPreferences.Save("other.feature",new(600,400));
+floatPreferences.Save("pro.attributes",new(470,550));
+Check(otherPreferences.Read("other.feature")==new FloatingWindowSize(600,400),"separate floating features preserve each other's sizes");
+floatPreferences.Save("pro.attributes",new(52,52));
+Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(470,550),"compact icon does not replace expanded size");
+File.WriteAllText(floatPath,"{corrupt");
+Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(580,680),"corrupt floating preferences fall back safely");
+floatPreferences.Save("pro.attributes",new(420,300));
+Check(floatPreferences.Read("pro.attributes")==new FloatingWindowSize(420,300),"floating preferences recover after corruption");
 Console.WriteLine(JsonSerializer.Serialize(new { passed, root }));

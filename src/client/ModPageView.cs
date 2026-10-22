@@ -54,7 +54,7 @@ internal sealed class ModPageView : StackPanel,IDisposable
             if(feature.Definition.GetProperty("floating").TryGetProperty("spriteAsset",out var sprite))
                 image=await connection.ImageAsync(id,hash,sprite.GetString()!);
             if(disposed)return;
-            var window=new ModFloatingWindow(feature.Definition,family,image);feature.Floating=window;window.Closed+=(_,_)=>feature.Floating=null;
+            var window=new ModFloatingWindow(feature.Definition,family,image,id+"."+key);feature.Floating=window;window.Closed+=(_,_)=>feature.Floating=null;
             window.Expanded+=()=>{if(feature.Model.ValueKind!=JsonValueKind.Undefined)window.Table.Render(feature.Model);_ =RefreshAsync();};
             if(feature.Model.ValueKind!=JsonValueKind.Undefined)window.Table.Render(feature.Model);
             window.Activate();_ =RefreshAsync();

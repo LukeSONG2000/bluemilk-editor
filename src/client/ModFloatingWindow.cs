@@ -29,7 +29,10 @@ internal sealed class ModFloatingWindow : Window
     internal readonly ModTableView Table;
     private readonly FloatingWindowFrame frame;
     private readonly Grid expandedSurface,compactSurface,dragArea;
-    private SizeInt32 expandedSize;
+    private FloatingWindowSize expandedSize;
+    private readonly FloatingWindowPreferences preferences = new();
+    private readonly string preferenceKey;
+    private readonly DispatcherTimer saveSizeTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private bool expanded=true,dragging,pointerGesture;
     private uint? pointerId;
     private PointInt32 pointerStart,windowStart;
@@ -38,7 +41,9 @@ internal sealed class ModFloatingWindow : Window
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
     internal bool IsExpanded=>expanded;
     internal event Action? Expanded;
-    internal ModFloatingWindow(JsonElement definition,string? originalFamily=null,JsonElement? sprite=null) {
+    internal ModFloatingWindow(JsonElement definition,string? originalFamily=null,JsonElement? sprite=null,string? preferenceKey=null) {
+        this.preferenceKey=preferenceKey??definition.GetProperty("id").GetString()!;
+        expandedSize=preferences.Read(this.preferenceKey);
         var theme=definition.GetProperty("floating");Title=definition.GetProperty("title").GetString()!;
         Windows.UI.Color Color(string key) {
             var text=theme.GetProperty(key).GetString()!;
@@ -101,15 +106,31 @@ internal sealed class ModFloatingWindow : Window
         Content=root;SystemBackdrop=new ClearBackdrop();ExtendsContentIntoTitleBar=true;SetTitleBar(drag);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","account-portrait.ico"));
         if(AppWindow.Presenter is OverlappedPresenter presenter){presenter.IsAlwaysOnTop=true;presenter.IsMaximizable=false;presenter.IsMinimizable=false;presenter.SetBorderAndTitleBar(false,false);}
-        var scale=GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d;
-        AppWindow.Resize(new SizeInt32((int)Math.Round(580*scale),(int)Math.Round(680*scale)));
-        var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
-        AppWindow.Resize(new SizeInt32(Math.Min(AppWindow.Size.Width,work.Width),Math.Min(AppWindow.Size.Height,work.Height)));ClampToDisplay();
-        frame=new FloatingWindowFrame(this);Closed+=(_,_)=>frame.Dispose();
+        RestoreExpandedSize();
+        frame=new FloatingWindowFrame(this);frame.SetResizable(true);
+        AppWindow.Changed+=WindowChanged;
+        saveSizeTimer.Tick+=(_,_)=>{saveSizeTimer.Stop();if(expanded)RememberSize();};
+        Closed+=(_,_)=>{saveSizeTimer.Stop();if(expanded)RememberSize();AppWindow.Changed-=WindowChanged;frame.Dispose();};
+    }
+    private double DisplayScale=>GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d;
+    private void WindowChanged(AppWindow sender,AppWindowChangedEventArgs args) {
+        if(!expanded||!args.DidSizeChange)return;
+        frame.UpdateResizeRegions();
+        saveSizeTimer.Stop();saveSizeTimer.Start();
+    }
+    private void RememberSize() {
+        var scale=DisplayScale;var size=AppWindow.Size;
+        expandedSize=new(size.Width/scale,size.Height/scale);
+        try{preferences.Save(preferenceKey,expandedSize);}
+        catch(Exception error) when(error is IOException or UnauthorizedAccessException){System.Diagnostics.Debug.WriteLine(error);}
+    }
+    private void RestoreExpandedSize() {
+        var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;var scale=DisplayScale;
+        AppWindow.Resize(new SizeInt32(Math.Min((int)Math.Round(expandedSize.Width*scale),work.Width),Math.Min((int)Math.Round(expandedSize.Height*scale),work.Height)));ClampToDisplay();
     }
     private void Collapse() {
         if(!expanded)return;
-        expandedSize=AppWindow.Size;expanded=false;SetTitleBar(null);
+        saveSizeTimer.Stop();RememberSize();expanded=false;frame.SetResizable(false);SetTitleBar(null);
         expandedSurface.Visibility=Visibility.Collapsed;compactSurface.Visibility=Visibility.Visible;
         var side=(int)Math.Round(52*(compactSurface.XamlRoot?.RasterizationScale??1));
         AppWindow.Resize(new SizeInt32(side,side));ClampToDisplay();
@@ -121,7 +142,7 @@ internal sealed class ModFloatingWindow : Window
         if(!expanded){
             expanded=true;compactSurface.Visibility=Visibility.Collapsed;expandedSurface.Visibility=Visibility.Visible;
             InputNonClientPointerSource.GetForWindowId(AppWindow.Id).ClearRegionRects(NonClientRegionKind.Passthrough);
-            AppWindow.Resize(expandedSize);ClampToDisplay();SetTitleBar(dragArea);Expanded?.Invoke();
+            frame.SetResizable(true);RestoreExpandedSize();SetTitleBar(dragArea);Expanded?.Invoke();
         }
         Activate();
     }

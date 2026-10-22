@@ -20,5 +20,6 @@
     <Compile Include="../client/EnemyControlModel.cs" Link="EnemyControlModel.cs" />
     <Compile Include="../client/PackageOpenArguments.cs" Link="PackageOpenArguments.cs" />
     <Compile Include="../client/CapturePresentation.cs" Link="CapturePresentation.cs" />
+    <Compile Include="../client/FloatingWindowPreferences.cs" Link="FloatingWindowPreferences.cs" />
   </ItemGroup>
 </Project>
