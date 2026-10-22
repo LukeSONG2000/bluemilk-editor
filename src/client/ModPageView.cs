@@ -42,7 +42,7 @@ internal sealed class ModPageView : StackPanel,IDisposable
         feature.Views.Add(new(view));view.Sync(feature.Model,active&&connection.IsConnected&&!writing);return view;
     }
     private async Task FloatAsync(string key) {
-        var feature=features[key];if(feature.Floating!=null){feature.Floating.Activate();return;}
+        var feature=features[key];if(feature.Floating!=null){feature.Floating.Expand();return;}
         if(feature.Opening||disposed)return;feature.Opening=true;
         try {
             string? family=null;
@@ -55,6 +55,7 @@ internal sealed class ModPageView : StackPanel,IDisposable
                 image=await connection.ImageAsync(id,hash,sprite.GetString()!);
             if(disposed)return;
             var window=new ModFloatingWindow(feature.Definition,family,image);feature.Floating=window;window.Closed+=(_,_)=>feature.Floating=null;
+            window.Expanded+=()=>{if(feature.Model.ValueKind!=JsonValueKind.Undefined)window.Table.Render(feature.Model);_ =RefreshAsync();};
             if(feature.Model.ValueKind!=JsonValueKind.Undefined)window.Table.Render(feature.Model);
             window.Activate();_ =RefreshAsync();
         }catch(Exception failure){ShowFailure(failure);}finally{feature.Opening=false;}
@@ -73,7 +74,7 @@ internal sealed class ModPageView : StackPanel,IDisposable
     private void Sync(Feature feature) {
         feature.Views.RemoveAll(reference=>!reference.TryGetTarget(out _));
         foreach(var reference in feature.Views)if(reference.TryGetTarget(out var view))view.Sync(feature.Model,active&&connection.IsConnected&&!writing);
-        if(feature.Floating!=null&&feature.Model.ValueKind!=JsonValueKind.Undefined)feature.Floating.Table.Render(feature.Model);
+        if(feature.Floating is {IsExpanded:true} floating&&feature.Model.ValueKind!=JsonValueKind.Undefined)floating.Table.Render(feature.Model);
     }
     private async Task WriteAsync(string key,object? value) {
         if(writing||disposed)return;writing=true;UpdateState();error.IsOpen=false;
@@ -84,7 +85,7 @@ internal sealed class ModPageView : StackPanel,IDisposable
     }
     private async Task RefreshAsync() {
         if(reading||writing||disposed||!active||!connection.CanRefresh||schema.ValueKind!=JsonValueKind.Object)return;
-        var requested=features.Where(f=>visible()||(homeVisible()&&preferences.Visible(id+"."+f.Key))||f.Value.Floating!=null).Select(f=>f.Key).ToArray();
+        var requested=features.Where(f=>visible()||(homeVisible()&&preferences.Visible(id+"."+f.Key))||f.Value.Floating is {IsExpanded:true}).Select(f=>f.Key).ToArray();
         if(requested.Length==0)return;reading=true;
         try {Render(await connection.ModCommandAsync(id,schema.GetProperty("query").GetString()!,new {features=requested},query:true));}
         catch(Exception failure){ShowFailure(failure);}finally{reading=false;}

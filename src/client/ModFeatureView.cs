@@ -27,7 +27,7 @@ internal sealed class ModFeatureView : StackPanel
         }else if(kind=="button") {
             var button=new Button {Content="执行"};input=button;button.Click+=async(_,_)=>await write(null);
         }else if(definition.TryGetProperty("floating",out _)) {
-            var button=new Button {Content=new SymbolIcon(Symbol.BackToWindow),Width=32,Height=32,Padding=new Thickness(0)};
+            var button=new Button {Content=new FontIcon {FontFamily=new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"),Glyph="\uE93A",FontSize=16},Width=32,Height=32,Padding=new Thickness(0)};
             AutomationProperties.SetName(button,title+"悬浮窗");ToolTipService.SetToolTip(button,"打开置顶悬浮窗");button.Click+=(_,_)=>floating();
             Grid.SetColumn(button,1);button.VerticalAlignment=VerticalAlignment.Center;header.Children.Add(button);
         }
