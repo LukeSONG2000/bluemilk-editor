@@ -85,8 +85,10 @@ internal sealed class ModFloatingWindow : Window
         }),true);
         icon.AddHandler(UIElement.PointerReleasedEvent,new PointerEventHandler((_,e)=>{
             if(pointerId!=e.Pointer.PointerId)return;
-            if(dragging&&GetCursorPos(out var point)){
-                AppWindow.Move(new PointInt32(windowStart.X+point.X-pointerStart.X,windowStart.Y+point.Y-pointerStart.Y));ClampToDisplay();
+            if(GetCursorPos(out var point)){
+                var dx=point.X-pointerStart.X;var dy=point.Y-pointerStart.Y;var threshold=4*(icon.XamlRoot?.RasterizationScale??1);
+                dragging|=Math.Abs(dx)>=threshold||Math.Abs(dy)>=threshold;
+                if(dragging){AppWindow.Move(new PointInt32(windowStart.X+dx,windowStart.Y+dy));ClampToDisplay();}
             }
             var open=!dragging;pointerId=null;icon.ReleasePointerCapture(e.Pointer);e.Handled=true;
             DispatcherQueue.TryEnqueue(()=>pointerGesture=false);
