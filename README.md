@@ -1,8 +1,8 @@
 # BlueMilk Editor
 
-让你的 SWGoH 工具与 Mod 各就其位。
+让你的 Mod 各就其位。
 
-BlueMilk Editor 是面向《星球大战：银河英雄传》PC 客户端的 Windows Mod 管理器。原生 WinUI 界面，自动连接游戏，把独立 Mod 的功能汇集到一个清晰的工作台。
+BlueMilk Editor 是原生 Windows Mod 管理器。自动连接游戏，把独立 Mod 的功能汇集到一个清晰的工作台。
 
 [下载 Windows 安装包](https://github.com/LukeSONG2000/bluemilk-editor/releases/latest) · [BlueMilk Pro](https://github.com/LukeSONG2000/bluemilk-pro) · [问题反馈](https://github.com/LukeSONG2000/bluemilk-editor/issues)
 
@@ -18,13 +18,13 @@ BlueMilk Editor 是面向《星球大战：银河英雄传》PC 客户端的 Win
 
 ## 配上 BlueMilk Pro
 
-[BlueMilk Pro](https://github.com/LukeSONG2000/bluemilk-pro) 是独立发布的官方信息辅助 Mod，提供血盾绝对值、技能冷却与状态回合数、实时属性及悬浮窗，以及商店购买失败修复。它保留原版战斗规则。
+[BlueMilk Pro](https://github.com/LukeSONG2000/bluemilk-pro) 是可在 Editor 使用的官方信息辅助 Mod，提供信息拓展、实时属性及悬浮窗，以及商店购买失败修复。
 
 下载 Editor 安装包和 Pro 的 `.bluemilk` 包，安装 Editor 后导入 Pro 即可。
 
 ## 为 Windows 而做
 
-支持 Windows 10 2004 及以上的 64 位系统，需要已安装的 SWGoH PC 客户端。自包含 EXE 安装包，无须另装 Python、Node.js 或 .NET；可安装到 Program Files，也可选择当前用户安装。安装界面支持简体中文、繁体中文与英文。
+支持 Windows 10 2004 及以上的 64 位系统。自包含 EXE 安装包，无须另装 Python、Node.js 或 .NET；可安装到 Program Files，也可选择当前用户安装。安装界面支持简体中文、繁体中文与英文。
 
 当前游戏适配器有版本兼容检查。游戏更新后，如连接提示不兼容，请更新 Editor 并反馈版本信息。
 
@@ -38,4 +38,4 @@ BlueMilk Editor 是面向《星球大战：银河英雄传》PC 客户端的 Win
 
 [开发与构建](docs/DEVELOPMENT.md) · [MIT License](LICENSE)
 
-BlueMilk 是独立项目，与 EA、Capital Games 或 Lucasfilm 无隶属关系。游戏资源归其权利人所有。
+BlueMilk 是独立开源项目。游戏资源归其权利人所有。
