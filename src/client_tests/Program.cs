@@ -74,9 +74,9 @@ if (args.SequenceEqual(new[] { "--release-live" }))
         { Timeout = TimeSpan.FromSeconds(30) };
     var token = Environment.GetEnvironmentVariable("GH_TOKEN") ??
         Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-    var liveRelease = await new ReleaseUpdates(http).CheckAsync(new Version(0, 1, 0), token);
+    var liveRelease = await new ReleaseUpdates(http, UpdateChannel.Exe).CheckAsync(new Version(1, 0, 0), token);
     Console.WriteLine(JsonSerializer.Serialize(new { liveRelease.State, liveRelease.Package }));
-    if (liveRelease.State != "no-release") throw new Exception("Expected visible repository with no release.");
+    if (liveRelease.State is not ("no-release" or "up-to-date" or "update-available")) throw new Exception("Release lookup unavailable.");
     return;
 }
 

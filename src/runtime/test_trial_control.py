@@ -14,14 +14,23 @@ from prepare_captured_trial import prepare
 
 class TrialControlTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.folder=Path(self.temp.name)
+        import test_paths
+        self.temp=tempfile.TemporaryDirectory(dir=test_paths.logs());self.folder=Path(self.temp.name)
         self.trial_package=self.folder/'trial.bluemilk'
-        pack(Path(__file__).resolve().parents[2]/'mods/trial',self.trial_package)
+        self.pack_fixture('trial', 'battle.trial', 'trial', self.trial_package)
         self.package=self.folder/'control.bluemilk'
-        pack(Path(__file__).resolve().parents[2]/'mods/battle-control',self.package)
+        self.pack_fixture('battle-control', 'battle.control', 'control', self.package)
         from mod_package import inspect_package
         self.digest=inspect_package(self.package)['sha256']
         self.request=dict(package=str(self.package),sha256=self.digest,policy=dict(enabled=False,oneClickTaunt=True,allowedTargets=[],manualUI=False))
+    def pack_fixture(self, name, capability, factory, output):
+        source=self.folder/name;source.mkdir()
+        manifest=dict(id='bluemilk.'+name,name='Test fixture',author='Test',version='1.0.0',
+            sdkVersion=1,gameProfile='swgoh-0.40.7',capabilities=[capability],
+            presentations=['cli'],dependencies=[],conflicts=[],entry='main.js')
+        (source/'mod.json').write_text(json.dumps(manifest))
+        (source/'main.js').write_text('module.exports = sdk => sdk.battle.'+factory+'.install();')
+        pack(source, output)
     def tearDown(self):self.temp.cleanup()
 
     def test_pinned_snapshot_and_policy(self):

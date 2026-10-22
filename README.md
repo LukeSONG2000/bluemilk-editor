@@ -1,67 +1,41 @@
 # BlueMilk Editor
 
-原生 WinUI 客户端与 `bluemilk` CLI 的通用 Mod 加载底座。两端共享 app-server、包库、配置和游戏适配器；客户端不要求用户安装 CLI 或拥有 AI agent。
+让你的 SWGoH 工具与 Mod 各就其位。
 
-Editor **不包含或自动安装 Pro/Ultra**。从 0.2.0 起，Pro 的血盾/CD/状态显示、属性格式化、页面与功能声明都由独立 `.bluemilk` 包提供。Editor 提供通用装载、资源生命周期和声明式组件，不按官方 Mod 名称生成页面。
+BlueMilk Editor 是面向《星球大战：银河英雄传》PC 客户端的 Windows Mod 管理器。原生 WinUI 界面，自动连接游戏，把独立 Mod 的功能汇集到一个清晰的工作台。
 
-## 使用
+[下载 Windows 安装包](https://github.com/LukeSONG2000/bluemilk-editor/releases/latest) · [BlueMilk Pro](https://github.com/LukeSONG2000/bluemilk-pro) · [问题反馈](https://github.com/LukeSONG2000/bluemilk-editor/issues)
 
-安装 EXE 后，在“Mod 管理”添加或拖入 `.bluemilk` 文件，也可直接双击包。双击复用已有窗口，安装不自动启用。开关保存长期启用选择，可离线操作；连接游戏后自动加载。侧栏只显示已启用的包。
+## 一个入口，管理你的 Mod
 
-默认提供管理员模式 Program Files 安装，也可选当前用户安装。升级保留安装范围、目录、Mod 和用户配置。文件关联按安装范围注册；独立单杯蓝奶图标用于包文件，双杯图标用于应用。
+- **独立安装**：导入、拖入或双击 `.bluemilk` 包；按需启用、停用和更新。
+- **打开即连接**：游戏与 Editor 可以按任意顺序启动，连接断开后自动恢复。
+- **自己的工作台**：已启用 Mod 进入侧栏，常用功能可放到主页。
+- **随时在后台**：关闭窗口驻留系统托盘，右键退出时清理连接和资源。
+- **更新有出处**：Editor 与 Mod 均支持从 GitHub Releases 检查更新，展示来源并校验下载内容。
 
-关闭主窗口会隐藏到系统托盘，游戏连接与 Mod 继续运行；点击托盘图标或菜单“打开”恢复窗口，右键“退出”清理 Editor 资源。没有其他前端连接时共享服务一并退出；CLI 正在使用的共享服务保留。
+**Editor 不预装任何 Mod，包括官方 Mod。** 加载、连接、配置、界面组件与更新是编辑器内嵌能力；信息辅助等扩展功能由独立 Mod 提供，安装后才可使用。
 
-安装器按 Windows 界面语言选择简体中文、繁体中文或英文，其他语言回落英文；升级不沿用旧版误选的英文。覆盖安装前检测本目录的 Editor/共享服务，确认关闭后等待文件释放并持有更新锁；拒绝或清理失败时停止覆盖，不强杀游戏。
+## 配上 BlueMilk Pro
 
-游戏启动前后都可打开 Editor，自动连接/恢复连接。连接失败不遗留未初始化会话。当前游戏适配仍固定校验 `runtime_core.EXPECTED`，动态跨游戏版本兼容尚未完成。
+[BlueMilk Pro](https://github.com/LukeSONG2000/bluemilk-pro) 是独立发布的官方信息辅助 Mod，提供血盾绝对值、技能冷却与状态回合数、实时属性及悬浮窗，以及商店购买失败修复。它保留原版战斗规则。
 
-**当前交付：Editor 0.2.6 与 Pro 0.2.5。** 旧 Pro 0.1.0 使用的内置信息 UI API 已移除，会在执行前提示更新。安装新版 Pro 并开启，即可切换；旧包和各版本配置保留。
+下载 Editor 安装包和 Pro 的 `.bluemilk` 包，安装 Editor 后导入 Pro 即可。
 
-## SDK 与组件
+## 为 Windows 而做
 
-[SDK 2](sdk/API-v2.md) 提供：
+支持 Windows 10 2004 及以上的 64 位系统，需要已安装的 SWGoH PC 客户端。自包含 EXE 安装包，无须另装 Python、Node.js 或 .NET；可安装到 Program Files，也可选择当前用户安装。安装界面支持简体中文、繁体中文与英文。
 
-- 包内 CommonJS/JSON 模块与完整文件哈希检查，注册时预编译子模块；启用才执行。
-- 通用 IL2CPP/Unity/主线程适配、原版数据读取、事件订阅与资源托管。
-- 声明式 toggle/select/button/text/table、两行功能标题、共享主页组件及显示偏好。
-- 表格的有色文本片段与置顶悬浮窗；颜色、字体和内容由 Mod 声明。
-- `mods-query` 只读查询与 `mods-command` 显式操作；轮询不占用永久写操作记录。
-- `mods-set-enabled` 持久启停；升级先确认旧版清理，再加载新版，清理失败不丢弃句柄。
+当前游戏适配器有版本兼容检查。游戏更新后，如连接提示不兼容，请更新 Editor 并反馈版本信息。
 
-包代码在游戏进程内运行，是可信代码，非安全沙箱。哈希证明内容完整，不认证发布者。UI 只接受有界数据声明，不执行包提供的 XAML/HTML。
+## 同一套能力，两种入口
 
-CLI 从 npm 单独安装，Editor 设置页提供手动命令和 AI 安装提示。npm 发布版本可能落后于源码；当前交付范围为 Editor 与 Pro。
+客户端供人操作，独立的 `bluemilk` CLI 供终端与 AI agent 使用。二者共享 app-server、Mod 包库和配置，互不要求安装另一端。CLI 安装说明位于 Editor 设置页。
 
-需要原游戏字体的 Mod 可声明本地字体资源。Editor 从已定位游戏的只读资源中提取到用户缓存，检查哈希后用 Win2D 直接读取字体文件绘制，无需安装系统字体。原游戏字体不进入仓库或安装包。声明原版九宫格的 Mod 同样从运行时只读图集取图，按受支持游戏版本缓存；悬浮窗使用 DWM 透明合成去除非客户区框体，背景支持 Alpha，文字保持不透明。展开窗口可拖动边缘/四角缩放，按功能保存 DIP 尺寸并在重开、重启后恢复；收起图标维持固定大小。首次使用字体/图片能力需要游戏可连接且本地资源包含对应原件。
+## 为创作者开放
 
-## 构建
+使用 [SDK 2](sdk/API-v2.md) 为 Mod 声明功能、页面组件和客户端／CLI 支持方式；通过 [.bluemilk 包标准与更新来源](docs/MOD_UPDATES.md) 独立分发。仓库中的 `sdk`、开发示例和测试用于扩展开发，不会作为 Mod 安装到用户设备。
 
-Windows、.NET 8 SDK、Python 3.11+（本地验证 3.13）、Inno Setup 6：
+[开发与构建](docs/DEVELOPMENT.md) · [MIT License](LICENSE)
 
-```powershell
-py -m pip install -r requirements-build.txt
-py tools/build_runtime.py --names C:/BlueMilkInputs/names.json --schema C:/BlueMilkInputs/schema.json
-./src/client/build-installer.ps1 -OutputDirectory logs/release-build
-```
-
-`names.json` 为本地原版单位名称映射；`schema.json` 为 `original-protos-schema-v1` 协议包。仓库不分发原游戏资源或这两份原始数据。最终 EXE 自包含，用户无需 Python/Node/.NET 环境。
-
-发布采用 EXE 安装包；设置页从 GitHub Releases 检查版本。历史 MSIX 代码仅作兼容参考，不再输出新 MSIX。远程访问接入口保留，当前连接仅支持本机认证 WebSocket。
-
-## 验证
-
-```powershell
-dotnet run --project src/client_tests/Client.Tests.csproj -- logs/client-tests
-py -m unittest discover -s src/runtime
-py -m unittest discover -s tests
-node tests/composite_lifecycle.mjs
-```
-
-测试需 Node。运行时测试应使用独立 USERPROFILE，避免真实共享服务占用更新锁。Pro 的原生 UI 生命周期、属性呈现及原版隔离战斗验证由 Pro 仓库维护。
-
-历史 Ultra/试玩适配仍在源码中维护，此次未迁入或分发 Ultra。所有原版功能均沿用原客户端逻辑，不重新实现伤害或技能规则。
-
-本项目独立维护，不隶属于 EA。
-
-首版范围与验收见 [FIRST_RELEASE.md](docs/FIRST_RELEASE.md)。
+BlueMilk 是独立项目，与 EA、Capital Games 或 Lucasfilm 无隶属关系。游戏资源归其权利人所有。

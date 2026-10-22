@@ -11,23 +11,19 @@ from mod_package import inspect_package
 
 
 class AuthorTests(unittest.TestCase):
-    def test_official_battle_control_uses_public_factory(self):
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'battle-control.bluemilk'
-            pack(ROOT / 'mods/battle-control', output)
-            manifest = inspect_package(output)['manifest']
-            self.assertEqual(manifest['id'], 'bluemilk.battle-control')
-            self.assertEqual(manifest['capabilities'], ['battle.control'])
-            self.assertIn('sdk.battle.control.install()', (ROOT / 'mods/battle-control/main.js').read_text())
-
-    def test_official_trial_public_factory(self):
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'trial.bluemilk'
-            pack(ROOT / 'mods/trial', output)
-            manifest = inspect_package(output)['manifest']
-            self.assertEqual(manifest['id'], 'bluemilk.trial')
-            self.assertEqual(manifest['capabilities'], ['battle.trial'])
-            self.assertIn('sdk.battle.trial.install()', (ROOT / 'mods/trial/main.js').read_text())
+    def test_sdk_factories_pack_as_external_test_packages(self):
+        for name, capability in [('battle-control', 'battle.control'), ('trial', 'battle.trial')]:
+            with tempfile.TemporaryDirectory(dir=ROOT/'logs') as directory:
+                source = Path(directory)/'source'; source.mkdir()
+                manifest = dict(id='bluemilk.'+name, name='Test fixture', author='Test',
+                    version='1.0.0', sdkVersion=1, gameProfile='swgoh-0.40.7',
+                    capabilities=[capability], presentations=['cli'], dependencies=[], conflicts=[], entry='main.js')
+                (source/'mod.json').write_text(json.dumps(manifest))
+                factory = 'control' if name == 'battle-control' else 'trial'
+                (source/'main.js').write_text('module.exports = sdk => sdk.battle.'+factory+'.install();')
+                output=Path(directory)/'fixture.bluemilk'
+                pack(source,output)
+                self.assertEqual(inspect_package(output)['manifest']['capabilities'],[capability])
 
     def test_configuration_example_and_runtime_validator_match(self):
         from mod_config_schema import resolve

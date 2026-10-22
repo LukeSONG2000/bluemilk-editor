@@ -1,3 +1,5 @@
+> Archived historical design notes. References to bundled packages describe an obsolete implementation. Editor 1.0.0 ships no Mods; use SDK 2 and separately distributed packages.
+
 # SDK v1 — currently implemented interface
 
 > Historical SDK 1 documentation. The bundled information UI described below was
