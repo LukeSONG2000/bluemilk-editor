@@ -7,6 +7,7 @@ logs/
 *.pfx
 *.p12
 .env
+node_modules/
 
 /src/runtime/assets/
 /src/assets/

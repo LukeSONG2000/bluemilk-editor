@@ -17,6 +17,9 @@
     "README.md",
     "LICENSE"
   ],
+  "dependencies": {
+    "playwright-core": "1.61.0"
+  },
   "os": [
     "win32"
   ],
